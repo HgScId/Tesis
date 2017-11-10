@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio 15
+VisualStudioVersion = 15.0.27004.2008
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "Tesis", "Tesis\Tesis.vcxproj", "{2810DC64-377B-45F0-ADBB-DE4E0B5C39BE}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{2810DC64-377B-45F0-ADBB-DE4E0B5C39BE}.Debug|x64.ActiveCfg = Debug|x64
+		{2810DC64-377B-45F0-ADBB-DE4E0B5C39BE}.Debug|x64.Build.0 = Debug|x64
+		{2810DC64-377B-45F0-ADBB-DE4E0B5C39BE}.Debug|x86.ActiveCfg = Debug|Win32
+		{2810DC64-377B-45F0-ADBB-DE4E0B5C39BE}.Debug|x86.Build.0 = Debug|Win32
+		{2810DC64-377B-45F0-ADBB-DE4E0B5C39BE}.Release|x64.ActiveCfg = Release|x64
+		{2810DC64-377B-45F0-ADBB-DE4E0B5C39BE}.Release|x64.Build.0 = Release|x64
+		{2810DC64-377B-45F0-ADBB-DE4E0B5C39BE}.Release|x86.ActiveCfg = Release|Win32
+		{2810DC64-377B-45F0-ADBB-DE4E0B5C39BE}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {8578D990-40BB-496E-A4A8-B769EA9FAB2E}
+	EndGlobalSection
+EndGlobal
