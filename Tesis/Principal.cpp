@@ -1,7 +1,8 @@
 #include <cstdio> // Para utilizar archivos: fopen, fread, fwrite, gets...
 #include <iostream> // Funciones cout y cin
-
-
+#include <filesystem>
+#include <experimental\filesystem>
+#include <string>
 
 #include <opencv2/core.hpp>
 #include <opencv2/opencv.hpp>
@@ -18,15 +19,115 @@
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 using namespace std;
 using namespace cv;
+using namespace experimental::filesystem::v1; //
 
 int main() {
+
+	path ruta ("D:/calibracion4/");
+	int num_img = 0;
+	vector<vector<cv::Point2f>> coord_imagen;
+	vector<vector<cv::Point3f>> coord_obj;
+	cv::Mat matrizcam = Mat(Size(3, 3), CV_64F);
+	cv::Mat distcoef = Mat(Size(8, 1), CV_64F);
+	vector<cv::Mat> rotmat;
+	vector<cv::Mat> trasmat;
+
+	for (directory_entry p : recursive_directory_iterator(ruta))
+	{
+		path ruta_archivo = p;
+		string direc = ruta_archivo.string();
+		string nombre = ruta_archivo.filename().string();
+		if (nombre.size() > 8)
+		{
+			if (nombre.compare(nombre.size() - 7, 7, "GRE.TIF") == 0) // Encuentra archivo
+			{
+				num_img += 1;
+
+				Mat imagen = cv::imread(direc, CV_LOAD_IMAGE_UNCHANGED); // Para abrir imágenes de 16 bits por píxel CV_LOAD_IMAGE_ANYDEPTH. Para abrir RGB -> CV_LOAD_IMAGE_COLOR
+				imagen.size();
+				imagen /= 255;
+				imagen.convertTo(imagen, CV_8UC1); // Le pongo un canal para el gris.
+				cv::Size tamano(12, 8); // número de esquinas
+				vector<cv::Point2f> esquinas;
+				bool loc = cv::findChessboardCorners(imagen, tamano, esquinas, CV_CALIB_CB_ADAPTIVE_THRESH);
+				if (loc == true) //si se localiza bien
+				{
+					vector<cv::Point3f> obj;
+					for (int j = 1; j <= 8; j++)
+					{
+						for (int i = 1; i <= 12; i++)
+						{
+							obj.push_back({ (float(i) - 1.0f) * 30.0f,(float(j) - 1.0f) * 30.0f,0.0f });
+						}
+					}
+					coord_obj.push_back(obj); // introduces en el vector general
+					coord_imagen.push_back(esquinas); // introduces las esquinas en el vector general
+
+
+					cv::cornerSubPix(imagen, esquinas, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 30, 0.1));
+					cv::cvtColor(imagen, imagen, CV_GRAY2RGB); // Para detectar las esquinas en color
+
+															   // Dibujo de las esquinas detectadas en colores
+					cv::drawChessboardCorners(imagen, tamano, esquinas, loc);
+
+					cv::imwrite("deteccionesquina3//" + std::to_string(num_img) + "Verde.TIF", imagen);
+
+
+				}
+				
+			}
+		}
+		
+	}
+
+	double cal = cv::calibrateCamera(coord_obj, coord_imagen, Size(1280,960), matrizcam, distcoef, rotmat, trasmat);
+
+	cv::Mat prueba = cv::imread("pruebaV.TIF", CV_LOAD_IMAGE_ANYDEPTH); // Para abrir imágenes de 16 bits por píxel
+	cv::Mat pruebabien;
+	cv::undistort(prueba, pruebabien, matrizcam, distcoef);
+	cv::imwrite("pruebaVbien.TIF", pruebabien);
+
+	GuardarMat(matrizcam, "Matriz_Camara.yml", "Matriz Camara");
+
+	GuardarMat(distcoef, "Matriz_Distorsion.yml", "Matriz Distorsion");
+
+	Mat imagenn = cv::imread("nuevacalV7.TIF", CV_LOAD_IMAGE_UNCHANGED);
+	imagenn /= 255;
+	imagenn.convertTo(imagenn, CV_8UC1);
+	cv::Size tamanoo(28, 20); // número de esquinas
+	vector<cv::Point3f> objj;
+	vector<cv::Point2f> esquinass;
+	for (int j = 1; j <= 20; j++)
+	{
+		for (int i = 1; i <= 28; i++)
+		{
+			objj.push_back({ (float(i) - 1.0f) * 20.0f,(float(j) - 1.0f) * 20.0f,0.0f });
+		}
+	}
+	bool loc = cv::findChessboardCorners(imagenn, tamanoo, esquinass, CV_CALIB_CB_ADAPTIVE_THRESH);
+	cv::cornerSubPix(imagenn, esquinass, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 300, 0.01));
+
+	// Inclusión de 3 canales RGB para el dibujo de las esquinas con color.
+	cv::cvtColor(imagenn, imagenn, CV_GRAY2RGB); // Para detectar las esquinas en color
+
+    // Dibujo de las esquinas detectadas en colores
+	cv::drawChessboardCorners(imagenn, tamanoo, esquinass, loc);
+	
+	cv::imwrite("nuevacalVesq7.TIF", imagenn);
+
 	/*
-	Mat im1 = imread("pruebaRbienk61.TIF", CV_LOAD_IMAGE_UNCHANGED);
-	im1.at<unsigned short>(0, 1189) = 3;
+	Mat im1 = imread("pruebaRbienk61MV.TIF", CV_LOAD_IMAGE_UNCHANGED);
+	im1 /= 255;
+	im1.convertTo(im1, CV_8UC1);
 	Mat im2 = imread("pruebaVbienk61.TIF", CV_LOAD_IMAGE_UNCHANGED);
-	Mat resultado = AlineaImg(im1, im2);
-	imwrite("alineaRVk61.TIF", resultado);
+	im2 /= 255;
+	im2.convertTo(im2, CV_8UC1);
+	Mat mat_transfor(Size(2, 3), CV_64F);
+	mat_transfor = estimateRigidTransform(im1, im2, true);
+	GuardarMat(mat_transfor, "Cosa.yml", "Cosa");
+	//imwrite("alineaRVk61.TIF", resultado);
 	*/
+	
 	/*
 	Mat im1 = imread("calibracion/13RojoC.TIF", CV_LOAD_IMAGE_UNCHANGED);
 	im1.at<unsigned short>(0, 1189) = 3;
@@ -35,76 +136,11 @@ int main() {
 	imwrite("alinea13.TIF", resultado);
 	*/
 
-	/*
-	// Read points
-
-	std::vector<cv::Point2f> imagePoints = Generate2DPoints();
-
-	std::vector<cv::Point3f> objectPoints = Generate3DPoints();
-
-
-
-	std::cout << "There are " << imagePoints.size() << " imagePoints and " << objectPoints.size() << " objectPoints." << std::endl;
-
-	cv::Mat cameraMatrix(3, 3, cv::DataType<double>::type);
-
-	cv::setIdentity(cameraMatrix);
-
-
-
-	std::cout << "Initial cameraMatrix: " << cameraMatrix << std::endl;
-
-
-
-	cv::Mat distCoeffs(4, 1, cv::DataType<double>::type);
-
-	distCoeffs.at<double>(0) = 0;
-
-	distCoeffs.at<double>(1) = 0;
-
-	distCoeffs.at<double>(2) = 0;
-
-	distCoeffs.at<double>(3) = 0;
-
-
-
-	cv::Mat rvec(3, 1, cv::DataType<double>::type);
-
-	cv::Mat tvec(3, 1, cv::DataType<double>::type);
-
-
-
-	cv::solvePnP(objectPoints, imagePoints, cameraMatrix, distCoeffs, rvec, tvec);
-
-
-
-	std::cout << "rvec: " << rvec << std::endl;
-
-	std::cout << "tvec: " << tvec << std::endl;
-
-
-
-	std::vector<cv::Point2f> projectedPoints;
-
-	cv::projectPoints(objectPoints, rvec, tvec, cameraMatrix, distCoeffs, projectedPoints);
-
-
-
-	for (unsigned int i = 0; i < projectedPoints.size(); ++i)
-
-	{
-
-		std::cout << "Image point: " << imagePoints[i] << " Projected to " << projectedPoints[i] << std::endl;
-
-	}
-
-	*/
-
-
 	// Vectores de vectores de puntos. Estructura que utiliza la función de calibración de la cámara
-	vector<vector<cv::Point3f>> coord_obj;
-	vector<vector<cv::Point2f>> coord_imagen;
-
+	
+	//vector<vector<cv::Point3f>> coord_obj;
+	//vector<vector<cv::Point2f>> coord_imagen;
+	
 	cv::Mat imagen;
 	cv::Size tamano(8, 6); // número de esquinas
 
@@ -125,7 +161,7 @@ int main() {
 
 		std::string nombre = "calibracion/";
 		nombre.append(std::to_string(i));
-		nombre.append("REG.TIF"); // nombre variable
+		nombre.append("Verde.TIF"); // nombre variable
 
 		imagen = cv::imread(nombre, CV_LOAD_IMAGE_UNCHANGED); // Para abrir imágenes de 16 bits por píxel CV_LOAD_IMAGE_ANYDEPTH. Para abrir RGB -> CV_LOAD_IMAGE_COLOR
 		// Las imágenes tienen una profundidad de 16 bits por píxel y se cargan con CV_LOAD_IMAGE_UNCHANGED / CV_LOAD_IMAGE_ANYDEPTH. 
@@ -146,9 +182,11 @@ int main() {
 
 		// Localización de las esquinas del tablero.
 		bool loc = cv::findChessboardCorners(imagen, tamano, esquinas, CV_CALIB_CB_ADAPTIVE_THRESH);
-		cv::cornerSubPix(imagen, esquinas, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_EPS + CV_TERMCRIT_ITER, 30, 0.1));
+		cv::cornerSubPix(imagen, esquinas, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 30, 0.1));
 		// Mejora la detección de las esquinas a escala subpixel. 
 		// Parece no tolerar la entrada de valores en double CV_64F, sólo float CV_32F.
+		// Si le ponemos que en el algoritmo de iteración que aumente el número mínimo o que epsilon (variación de la solución) se reduzca, la precisión de la localización de las esquinas aumentará
+		// Con valores mayores de 30, 0.1 los resultados gráficos dejan de mejorar.
 
 		coord_imagen.push_back(esquinas); // introduces las esquinas en el vector general
 
@@ -158,7 +196,7 @@ int main() {
 		// Dibujo de las esquinas detectadas en colores
 		cv::drawChessboardCorners(imagen, tamano, esquinas, loc);
 
-		cv::imwrite("deteccionesquina//" + std::to_string(i) + "REG.TIF", imagen);
+		cv::imwrite("deteccionesquina//" + std::to_string(i) + "Verde.TIF", imagen);
 
 		//cv::namedWindow("hola", CV_WINDOW_FULLSCREEN);
 		//cv::imshow("hola", imagen);
@@ -166,7 +204,7 @@ int main() {
 	}
 	
 	//cv::Mat matrizcam= Mat::eye(3, 3, CV_64F);
-	cv::Mat matrizcam = Mat(Size(3, 3), CV_64F);
+	//cv::Mat matrizcam = Mat(Size(3, 3), CV_64F);
 	matrizcam.at<double>(0, 0) = 1068.74;
 	matrizcam.at<double>(0, 1) = 0.0;
 	matrizcam.at<double>(0, 2) = 650.329;
@@ -181,7 +219,7 @@ int main() {
 	//matrizcam.at<double>(0, 0) = 1.0;
 
 	//cv::Mat distcoef = Mat::zeros(8,1, CV_64F);
-	cv::Mat distcoef = Mat(Size(8, 1), CV_64F);
+	//cv::Mat distcoef = Mat(Size(8, 1), CV_64F);
 	distcoef.at<double>(0, 0) = 308.34805117438947;
 	distcoef.at<double>(0, 1) = 390.52229314295465;
 	distcoef.at<double>(0, 2) = 0.00068590874232127091;
@@ -191,9 +229,9 @@ int main() {
 	distcoef.at<double>(0, 6) = 507.33006137507221;
 	distcoef.at<double>(0, 7) = -290.37421176928223;
 
-
-	vector<cv::Mat> rotmat;
-	vector<cv::Mat> trasmat;
+	
+	//vector<cv::Mat> rotmat;
+	//vector<cv::Mat> trasmat;
 	//Mat rotmat;
 	//Mat trasmat;
 
@@ -204,29 +242,23 @@ int main() {
 	// CV_CALIB_FIX_K3 | CV_CALIB_FIX_K4 | CV_CALIB_FIX_K5| CV_CALIB_FIX_K6
 	// CV_CALIB_USE_INTRINSIC_GUESS
 	
-	double cal = cv::calibrateCamera(coord_obj, coord_imagen, imagen.size(), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_RATIONAL_MODEL);
+	//double cal = cv::calibrateCamera(coord_obj, coord_imagen, imagen.size(), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_RATIONAL_MODEL);
 
 	
 	// cv::Mat matrizcamoptima(cv::Size(3, 3), CV_64F);
 	// matrizcamoptima = cv::getOptimalNewCameraMatrix(matrizcam,distcoef,imagen.size(),1); // sirve para conservar todos los píxeles de la imagen original
 	// Para utilizarlo se le añade a la función undistort como último parámetro.
 
-	for (int i = 0; i <= 2; i++)
-	{
-		for (int j = 0; j <= 2; j++)
-		{
-			std::cout << matrizcam.at<double>(i, j) << " ";
-		}
-		std::cout << endl;
-	}
+	GuardarMat(matrizcam, "Matriz_Camara.yml", "Matriz Camara");
 
-	GuardarMat(distcoef, "matriz_distorsion.yml", "Matriz Distorsion");
+	GuardarMat(distcoef, "Matriz_Distorsion.yml", "Matriz Distorsion");
+	
 	/*
 	for (int i = 1; i <= 18; i++)
 	{
 		std::string nombre = "calibracion/";
 		nombre.append(std::to_string(i));
-		nombre.append("Rojo.TIF"); // nombre variable
+		nombre.append("NIR.TIF"); // nombre variable
 		cv::Mat corregir = cv::imread(nombre, CV_LOAD_IMAGE_ANYDEPTH); // Para abrir imágenes de 16 bits por píxel
 		//cv::imshow("prueba", corregir);
 		//cv::waitKey(0);
@@ -236,15 +268,16 @@ int main() {
 		//cv::waitKey(0);
 		std::string nombre2 = "calibracion/";
 		nombre2.append(std::to_string(i));
-		nombre2.append("RojoCMV.TIF"); // nombre variable
+		nombre2.append("NIRCMV.TIF"); // nombre variable
 		cv::imwrite(nombre2, corregida);
 	}
 	*/
+
 	for (int i = 1; i <= 18; i++)
 	{
 		std::string nombre = "calibracion/";
 		nombre.append(std::to_string(i));
-		nombre.append("REG.TIF"); // nombre variable
+		nombre.append("Verde.TIF"); // nombre variable
 		cv::Mat corregir = cv::imread(nombre, CV_LOAD_IMAGE_ANYDEPTH); // Para abrir imágenes de 16 bits por píxel
 		//cv::imshow("prueba", corregir);
 		//cv::waitKey(0);
@@ -254,30 +287,39 @@ int main() {
 		//cv::waitKey(0);
 		std::string nombre2 = "calibracion/";
 		nombre2.append(std::to_string(i));
-		nombre2.append("NREG.TIF"); // nombre variable
+		nombre2.append("VerdeC.TIF"); // nombre variable
 		cv::imwrite(nombre2, corregida);
 	}
 
+	/*
 	cv::Mat prueba = cv::imread("pruebaREG.TIF", CV_LOAD_IMAGE_ANYDEPTH); // Para abrir imágenes de 16 bits por píxel
 	cv::Mat pruebabien;
 	cv::undistort(prueba, pruebabien, matrizcam, distcoef);
 	cv::imwrite("pruebaREGbien.TIF", pruebabien);
+	*/
 
 	//cv::imshow("prueba", prueba);
 	//cv::imshow("pruebabien", pruebabien);
 	//cv::waitKey(0);
 
 	
-	// Calcular el error de reproyección
+	// Calcular el error de reproyección manualmente.
+	// Proyecta los puntos originales con las matrices de transformación de las cámaras (rotación más traslación), hace la diferencia punto a punto y las suma al cuadrado.
+	// Sumados todos los puntos de todas las imágenes, divide entre n puntos y hacer la raíz cuadrada.
+	// El error de reproyección (medido en píxeles) es un RMSE.
 	double error = 0.0;
+	int total_puntos = 0;
 	for (int i = 0; i <= 17; i++)
 	{
 		vector<cv::Point2f> coord_obj_proy;
 		cv::projectPoints(coord_obj[i], rotmat[i], trasmat[i], matrizcam, distcoef, coord_obj_proy);
-		error += cv::norm(coord_imagen[i], coord_obj_proy, cv::NORM_L2); // acumula en error la raíz de los cuadrados de los módulos de los vectores entre la esquina detectada y la reproyectada
+		for (int j = 0; j < coord_obj_proy.size(); j++)
+		{
+			error += (coord_imagen[i][j].x - coord_obj_proy[j].x)*(coord_imagen[i][j].x - coord_obj_proy[j].x) + (coord_imagen[i][j].y - coord_obj_proy[j].y)*(coord_imagen[i][j].y - coord_obj_proy[j].y);
+			total_puntos += 1;
+		}
 	}
-	double RMSE = error / sqrt(48 * 18);
-	
+	double error_reproy = sqrt(error / total_puntos);
 	// Obtener parámetros reales de la cámara
 
 	double ancho = 4.8; // parámetros obtenidos mediante la multiplicación del tamaño del píxel (3.75 micras para monocromáticas) y de la resolución de la imagen 
@@ -300,4 +342,38 @@ int main() {
 /// LOCALIZAR MIN Y MAX DE LA MATRIZ
 double min, max;
 cv::minMaxLoc(imagen, &min, &max);
+*/
+
+/*
+/// Prueba calibración Agisoft
+//cv::Mat matrizcam= Mat::eye(3, 3, CV_64F);
+cv::Mat matrizcam2 = Mat(Size(3, 3), CV_64F);
+matrizcam2.at<double>(0, 0) = 959.19;
+matrizcam2.at<double>(0, 1) = 0.0;
+matrizcam2.at<double>(0, 2) = 600.1268;
+matrizcam2.at<double>(1, 0) = 0.0;
+matrizcam2.at<double>(1, 1) = 959.19;
+matrizcam2.at<double>(1, 2) = 415.4909;
+matrizcam2.at<double>(2, 0) = 0.0;
+matrizcam2.at<double>(2, 1) = 0.0;
+matrizcam2.at<double>(2, 2) = 1.0;
+
+//matrizcam.at<double>(1, 1) = 1.0; No condiciona nada fijar los valores de partida
+//matrizcam.at<double>(0, 0) = 1.0;
+
+//cv::Mat distcoef = Mat::zeros(8,1, CV_64F);
+cv::Mat distcoef2 = Mat(Size(8, 1), CV_64F);
+distcoef2.at<double>(0, 0) = -0.177077;
+distcoef2.at<double>(0, 1) = 0.047056;
+distcoef2.at<double>(0, 2) = 0.00268751;
+distcoef2.at<double>(0, 3) = 0.0478248;
+distcoef2.at<double>(0, 4) = -0.201056;
+distcoef2.at<double>(0, 5) = 0.245166;
+distcoef2.at<double>(0, 6) = 0.0;
+distcoef2.at<double>(0, 7) = 0.0;
+
+cv::Mat prueba = cv::imread("pruebaV.TIF", CV_LOAD_IMAGE_ANYDEPTH); // Para abrir imágenes de 16 bits por píxel
+cv::Mat pruebabien;
+cv::undistort(prueba, pruebabien, matrizcam2, distcoef2);
+cv::imwrite("pruebaVbien.TIF", pruebabien);
 */
