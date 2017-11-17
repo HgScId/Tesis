@@ -13,3 +13,6 @@ Mat AlineaImg(Mat& imgbase, Mat& imgmovida);
 // ruta es la ruta con el nombre de archivo y el formato incluido.
 // nombre_archivo es el nombre de la matriz dentro del archivo.
 void GuardarMat(Mat& matriz, string ruta, string nombre_archivo);
+void GuardarMat(vector<double> & vector, string ruta, string nombre_archivo);
+
+void CalibraRGB();
