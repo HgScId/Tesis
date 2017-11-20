@@ -12,7 +12,25 @@ Mat AlineaImg(Mat& imgbase, Mat& imgmovida);
 // Guardar matriz de forma básica con los campos por defecto. Formato .yml
 // ruta es la ruta con el nombre de archivo y el formato incluido.
 // nombre_archivo es el nombre de la matriz dentro del archivo.
-void GuardarMat(Mat& matriz, string ruta, string nombre_archivo);
-void GuardarMat(vector<double> & vector, string ruta, string nombre_archivo);
+void GuardarMatFisica(vector<double> & vector, string ruta);
+void GuardarMatDistorsion(Mat& matriz, string ruta);
+void GuardarMatCamara(Mat& matriz, string ruta);
 
-void CalibraRGB();
+
+
+
+/// LEER MATRICES INTRÍNSECAS DE LA CÁMARA Y ALMACENARLAS EN UNA MATRIZ
+Mat LeerMatCamara(string ruta_ext);
+Mat LeerMatDistorsion(string ruta_ext, int max_k);
+
+
+
+/// CALIBRA IMÁGENES Y SE OBTIENE LA DETECCIÓN DE ESQUINAS
+void CalibraRGB(string ruta_carpeta_entrada, string& banda_extension, int& num_k, string ruta_salida_deteccionesquina);
+void CalibraMono(string ruta_carpeta, string& banda_extension, int& num_k, string ruta_salida_deteccionesquina);
+
+
+
+/// CORRECCIÓN DE SET DE IMÁGENES A PARTIR DE LAS MATRICES INTRÍNSECAS DE LA CÁMARA
+void CorrigeImagenes(Mat& mat_cam, Mat& dist_coef, string& banda, string ruta_img_entrada, string ruta_img_salida);
+void CorrigeImagenesRGB(Mat& mat_cam, Mat& dist_coef, string& banda, string ruta_img_entrada, string ruta_img_salida);

@@ -95,30 +95,123 @@ Mat AlineaImg(Mat& img_base, Mat& img_movida)
 	return img_alineada;
 }
 
-void GuardarMat(Mat& matriz, string ruta, string nombre_archivo)
+
+
+
+void GuardarMatCamara(Mat& matriz, string ruta)
 {
 	cv::FileStorage guardar(ruta, cv::FileStorage::WRITE);
-	guardar << nombre_archivo << matriz;
+	guardar << "Distancia focal X" << matriz.at<double>(0, 0);
+	guardar << "Distancia focal Y" << matriz.at<double>(1, 1);
+	guardar << "Punto principal X" << matriz.at<double>(0, 2);
+	guardar << "Punto principal Y" << matriz.at<double>(1, 2);
 	guardar.release();
 }
 
-void GuardarMat(vector<double> & vector, string ruta, string nombre_archivo)
+void GuardarMatDistorsion(Mat& matriz, string ruta)
 {
 	cv::FileStorage guardar(ruta, cv::FileStorage::WRITE);
-	guardar << nombre_archivo << vector;
+	guardar << "k1" << matriz.at<double>(0, 0);
+	guardar << "k2" << matriz.at<double>(0, 1);
+	guardar << "p1" << matriz.at<double>(0, 2);
+	guardar << "p2" << matriz.at<double>(0, 3);
+	guardar << "k3" << matriz.at<double>(0, 4);
+	if (matriz.cols - 5 > 0)
+	{
+		guardar << "k4" << matriz.at<double>(0, 5);
+	}
+	if (matriz.cols - 6 > 0)
+	{
+		guardar << "k5" << matriz.at<double>(0, 6);
+	}
+	if (matriz.cols - 7 > 0)
+	{
+		guardar << "k6" << matriz.at<double>(0, 7);
+	}
 	guardar.release();
 }
 
-void CalibraRGB()
+void GuardarMatFisica(vector<double> & vector, string ruta)
+{
+	cv::FileStorage guardar(ruta, cv::FileStorage::WRITE);
+	guardar << "Distancia focal" << vector[0];
+	guardar << "Relacion de aspecto" << vector[1];
+	guardar << "Punto principal X" << vector[2];
+	guardar << "Punto principal Y" << vector[3];
+	guardar << "Field of View X" << vector[4];
+	guardar << "Field of View Y" << vector[5];
+	guardar << "Error de reproyeccion" << vector[6];
+	guardar.release();
+}
+
+
+
+
+Mat LeerMatCamara(string ruta_ext)
+{
+	Mat matrizcam = Mat(Size(3, 3), CV_64F); // Matriz intrínseca de la cámara
+	FileStorage leer_matcam(ruta_ext, FileStorage::READ);
+	leer_matcam["Distancia focal X"] >> matrizcam.at<double>(0, 0);
+	leer_matcam["Distancia focal Y"] >> matrizcam.at<double>(1, 1);
+	leer_matcam["Punto principal X"] >> matrizcam.at<double>(0, 2);
+	leer_matcam["Punto principal Y"] >> matrizcam.at<double>(1, 2);
+	matrizcam.at<double>(0, 1) = 0.0;
+	matrizcam.at<double>(1, 0) = 0.0;
+	matrizcam.at<double>(2, 0) = 0.0;
+	matrizcam.at<double>(2, 1) = 0.0;
+	matrizcam.at<double>(2, 2) = 1.0;
+	return matrizcam;
+}
+
+Mat LeerMatDistorsion(string ruta_ext, int max_k)
+{
+	Mat distcoef = Mat(Size(2 + max_k, 1), CV_64F); // Matriz de coeficientes de distorsión de la cámara
+
+	FileStorage leer_matdist(ruta_ext, FileStorage::READ);
+	leer_matdist["k1"] >> distcoef.at<double>(0, 0);
+	leer_matdist["k2"] >> distcoef.at<double>(0, 1);
+	leer_matdist["p1"] >> distcoef.at<double>(0, 2);
+	leer_matdist["p2"] >> distcoef.at<double>(0, 3);
+
+	if (max_k + 2 > 4)
+	{
+		leer_matdist["k3"] >> distcoef.at<double>(0, 4);
+
+	}
+	if (max_k + 2 > 5)
+	{
+		leer_matdist["k4"] >> distcoef.at<double>(0, 5);
+
+	}
+	if (max_k + 2 > 6)
+	{
+		leer_matdist["k5"] >> distcoef.at<double>(0, 6);
+
+	}
+	if (max_k + 2 > 7)
+	{
+		leer_matdist["k6"] >> distcoef.at<double>(0, 7);
+
+	}
+	return distcoef;
+}
+
+
+
+
+void CalibraRGB(string ruta_carpeta_entrada, string& banda_extension, int& num_k, string ruta_salida_deteccionesquina)
 {
 	/// CALIBRACIÓN DE UN SET DE IMÁGENES PARA BANDA RGB
 	/// **********************************************************************************************************************************************************************
 
-	path ruta("D:/calibracion/");
+	path ruta(ruta_carpeta_entrada);
 	int num_img = 0;
 	vector<vector<cv::Point2f>> coord_imagen; // Vector de vectores de puntos detectados en las imágenes
 	vector<vector<cv::Point3f>> coord_obj; // Vector de vectores de puntos en coordenadas locales (se repiten siempre en cada imagen)
 	cv::Mat matrizcam = Mat(Size(3, 3), CV_64F); // Matriz intrínseca de la cámara
+	//matrizcam.at<double>(0, 0) = 1.0; // Para mantener el ratio de aspecto. Se dispara la fx.
+	//matrizcam.at<double>(1, 1) = 1.0;
+
 	cv::Mat distcoef = Mat(Size(8, 1), CV_64F); // Matriz de coeficientes de distorsión de la cámara
 	vector<cv::Mat> rotmat; // Matriz extrínseca de rotaciones de la cámara
 	vector<cv::Mat> trasmat; // Matriz extrínseca de traslaciones de la cámara
@@ -131,7 +224,7 @@ void CalibraRGB()
 
 		if (nombre.size() > 8) // Si el nombre es grande de 8 caracteres significa que es una foto (evita carpetas).
 		{
-			if (nombre.compare(nombre.size() - 7, 7, "RGB.JPG") == 0) // Encuentra imagen banda buscada
+			if (nombre.compare(nombre.size() - 7, 7, banda_extension) == 0) // Encuentra imagen banda buscada
 			{
 				num_img += 1; // cada vez que entra significa que encuentra una imagen de la banda que quiere
 
@@ -158,11 +251,11 @@ void CalibraRGB()
 					
 					cv::cornerSubPix(imagen, esquinas, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 30, 0.1)); // función para la detección precisa de las esquinas
 					
-					cv::cvtColor(imagen, imagen, CV_GRAY2RGB); // Se transforma la imagen a 3 canales de color para ponerle la detección de esquinas en color.
-					cv::drawChessboardCorners(imagen, tamano, esquinas, loc); // Dibujo de las esquinas detectadas en colores
+					//cv::cvtColor(imagen, imagen, CV_GRAY2RGB); // Se transforma la imagen a 3 canales de color para ponerle la detección de esquinas en color.
+					//cv::drawChessboardCorners(imagen, tamano, esquinas, loc); // Dibujo de las esquinas detectadas en colores
 					
 
-					cv::imwrite("deteccionesquina//" + std::to_string(num_img) + "RGB.JPG", imagen);
+					//cv::imwrite(ruta_salida_deteccionesquina + std::to_string(num_img) + banda_extension, imagen);
 				}
 
 			}
@@ -170,7 +263,29 @@ void CalibraRGB()
 
 	}
 
-	double cal = cv::calibrateCamera(coord_obj, coord_imagen, Size(4608,3456), matrizcam, distcoef, rotmat, trasmat); // Calibración de la cámara
+	double error_repro;
+	if (num_k == 3)
+	{
+		error_repro = cv::calibrateCamera(coord_obj, coord_imagen, Size(4608, 3456), matrizcam, distcoef, rotmat, trasmat); // Calibración de la cámara
+	}
+	else if (num_k == 2)
+	{
+		error_repro = cv::calibrateCamera(coord_obj, coord_imagen, Size(4608, 3456), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_FIX_K3); // Calibración de la cámara
+	}															  
+	else if (num_k == 4)										  
+	{															  
+		error_repro = cv::calibrateCamera(coord_obj, coord_imagen, Size(4608, 3456), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_RATIONAL_MODEL | CV_CALIB_FIX_K5 | CV_CALIB_FIX_K6); // Calibración de la cámara
+	}															   
+	else if (num_k == 5)										   
+	{															   
+		error_repro = cv::calibrateCamera(coord_obj, coord_imagen, Size(4608, 3456), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_RATIONAL_MODEL | CV_CALIB_FIX_K6); // Calibración de la cámara
+	}															
+	else if (num_k == 6)										
+	{															
+		error_repro = cv::calibrateCamera(coord_obj, coord_imagen, Size(4608, 3456), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_RATIONAL_MODEL); // Calibración de la cámara
+	}
+
+
 	double ancho = 6.17472; // parámetros obtenidos mediante la multiplicación del tamaño del píxel (3.75 micras para monocromáticas) y de la resolución de la imagen 
 	double alto = 4.63104; // especifican el ancho y el alto del tamaño del sensor. Probablemente por el tipo de obturador CCD mono y CMOS RGB.
 	double fov_x;
@@ -188,15 +303,32 @@ void CalibraRGB()
 	matrizfisica.push_back(punto_prin.y);
 	matrizfisica.push_back(fov_x);
 	matrizfisica.push_back(fov_y);
-	matrizfisica.push_back(cal);
-
-	GuardarMat(matrizfisica, "Matriz_Fisica.yml", "Matriz Fisica");
-
-	GuardarMat(matrizcam, "Matriz_Camara.yml", "Matriz Camara");
-
-	GuardarMat(distcoef, "Matriz_Distorsion.yml", "Matriz Distorsion");
+	matrizfisica.push_back(error_repro);
 
 
+	string nombre_salida = banda_extension;
+	for (int i = 0; i <= 3; i++) // quitarle el .JPG
+	{
+		nombre_salida.pop_back();
+	}
+
+	nombre_salida.append("_k");
+	nombre_salida.append(to_string(num_k));
+	nombre_salida.append(".yml");
+
+	string salida = "Matriz_Fisica_";
+	salida.append(nombre_salida);
+	GuardarMatFisica(matrizfisica, salida);
+
+	salida = "Matriz_Camara_";
+	salida.append(nombre_salida);
+	GuardarMatCamara(matrizcam, salida);
+
+	salida = "Matriz_Distorsion_";
+	salida.append(nombre_salida);
+	GuardarMatDistorsion(distcoef, salida);
+
+	/*
 	// Corrección de la distorsión en imágenes de prueba
 	cv::Mat prueba = cv::imread("pruebaRGB.JPG", CV_LOAD_IMAGE_ANYDEPTH); // Para abrir imágenes de 16 bits por píxel
 	cv::Mat pruebabien;
@@ -227,6 +359,242 @@ void CalibraRGB()
 			}
 		}
 	}
+	*/
 	/// **********************************************************************************************************************************************************************
 	/// **********************************************************************************************************************************************************************
+}
+
+void CalibraMono(string ruta_carpeta_entrada, string& banda_extension, int& num_k, string ruta_salida_deteccionesquina)
+{
+	/// CALIBRACIÓN DE UN SET DE IMÁGENES PARA UNA BANDA MONOCROMÁTICA
+	/// **********************************************************************************************************************************************************************
+	// Cuidar de poner ruta de salida para las imágenes de detección de esquinas y  (si se quieren sacar) y la
+	path ruta(ruta_carpeta_entrada); //"D:/calibracion/"
+	int num_img = 0;
+	vector<vector<cv::Point2f>> coord_imagen; // Vector de vectores de puntos detectados en las imágenes
+	vector<vector<cv::Point3f>> coord_obj; // Vector de vectores de puntos en coordenadas locales (se repiten siempre en cada imagen)
+	cv::Mat matrizcam = Mat(Size(3, 3), CV_64F); // Matriz intrínseca de la cámara
+	cv::Mat distcoef = Mat(Size(8, 1), CV_64F); // Matriz de coeficientes de distorsión de la cámara
+	vector<cv::Mat> rotmat; // Matriz extrínseca de rotaciones de la cámara
+	vector<cv::Mat> trasmat; // Matriz extrínseca de traslaciones de la cámara
+
+	for (directory_entry p : recursive_directory_iterator(ruta)) // iteración en carpetas y subcarpetas de la ruta
+	{
+		path ruta_archivo = p; // Cada archivo o subcarpeta localizado se utiliza como clase path
+		string direc = ruta_archivo.string(); // convertir la ruta de clase path a clase string
+		string nombre = ruta_archivo.filename().string(); // convertir el nombre del archivo de clase path a string
+
+		if (nombre.size() > 8) // Si el nombre es grande de 8 caracteres significa que es una foto (evita carpetas).
+		{
+			if (nombre.compare(nombre.size() - 7, 7, banda_extension) == 0) // Encuentra imagen banda buscada
+			{
+				num_img += 1; // cada vez que entra significa que encuentra una imagen de la banda que quiere
+
+				Mat imagen = cv::imread(direc, CV_LOAD_IMAGE_UNCHANGED); // Para abrir imágenes de 16 bits por píxel CV_LOAD_IMAGE_ANYDEPTH. Para abrir RGB -> CV_LOAD_IMAGE_COLOR
+				imagen /= 255; // Para calibrar se necesita convertir a 8 bits por canal
+				imagen.convertTo(imagen, CV_8UC1); // Le pongo un canal para el gris.
+				cv::Size tamano(12, 8); // número de esquinas a localizar
+				vector<cv::Point2f> esquinas; // coordenadas de las esquinas detectadas en la imagen
+
+				bool loc = cv::findChessboardCorners(imagen, tamano, esquinas, CV_CALIB_CB_ADAPTIVE_THRESH);
+				if (loc == true) // si se localizan bien todas las esquinas es cuando se introduce dentro del set de calibración
+				{
+					vector<cv::Point3f> obj; // vector de esquinas para la imagen de estudio en coordenadas locales
+					for (int j = 1; j <= 8; j++)
+					{
+						for (int i = 1; i <= 12; i++)
+						{
+							obj.push_back({ (float(i) - 1.0f) * 30.0f,(float(j) - 1.0f) * 30.0f,0.0f }); // Tablero 30 x 30
+						}
+					}
+					coord_obj.push_back(obj); // introduces las esquinas en coordenadas locales del tablero en el vector general
+					coord_imagen.push_back(esquinas); // introduces las esquinas detectadas en coordenadas de la imagen en el vector general
+
+
+					cv::cornerSubPix(imagen, esquinas, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 30, 0.1)); // función para la detección precisa de las esquinas
+					//cv::cvtColor(imagen, imagen, CV_GRAY2RGB); // Se transforma la imagen a 3 canales de color para ponerle la detección de esquinas en color.
+
+					//cv::drawChessboardCorners(imagen, tamano, esquinas, loc); // Dibujo de las esquinas detectadas en colores
+
+					//cv::imwrite(ruta_salida_deteccionesquina + std::to_string(num_img) + banda_extension, imagen);
+				}
+
+			}
+		}
+
+	}
+
+	/// POSBILES CALIBRACIONES SEGÚN EL NÚMERO DE PARÁMETROS DE DISTORSIÓN RADIAL QUE SE QUIERAN UTILIZAR
+	double error_repro;
+	if (num_k == 3)
+	{
+		error_repro = cv::calibrateCamera(coord_obj, coord_imagen, Size(1280, 960), matrizcam, distcoef, rotmat, trasmat); // Calibración de la cámara
+	}
+	else if (num_k == 2) // cv::TermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 1000, 0.01)
+	{
+		error_repro = cv::calibrateCamera(coord_obj, coord_imagen, Size(1280, 960), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_FIX_K3); // Calibración de la cámara
+	}
+	else if (num_k == 4)
+	{
+		error_repro = cv::calibrateCamera(coord_obj, coord_imagen, Size(1280, 960), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_RATIONAL_MODEL | CV_CALIB_FIX_K5 | CV_CALIB_FIX_K6); // Calibración de la cámara
+	}
+	else if (num_k == 5)
+	{
+		error_repro = cv::calibrateCamera(coord_obj, coord_imagen, Size(1280, 960), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_RATIONAL_MODEL | CV_CALIB_FIX_K6); // Calibración de la cámara
+	}
+	else if (num_k == 6)
+	{
+		error_repro = cv::calibrateCamera(coord_obj, coord_imagen, Size(1280, 960), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_RATIONAL_MODEL); // Calibración de la cámara
+	}
+
+	double ancho = 4.8; // parámetros obtenidos mediante la multiplicación del tamaño del píxel (3.75 micras para monocromáticas) y de la resolución de la imagen 
+	double alto = 3.6; // especifican el ancho y el alto del tamaño del sensor. Probablemente por el tipo de obturador CCD mono y CMOS RGB.
+	double fov_x;
+	double fov_y;
+	double dist_focal;
+	cv::Point2d punto_prin;
+	double ratio_aspecto;
+
+	cv::calibrationMatrixValues(matrizcam, Size(1280, 960), ancho, alto, fov_x, fov_y, dist_focal, punto_prin, ratio_aspecto); // Parámetros físicos de la cámara
+
+	/// OBTENCIÓN DE LAS MATRICES DE CALIBRACIÓN
+	vector<double>matrizfisica; // Vector para obtener la salida de parámetros
+	matrizfisica.push_back(dist_focal);
+	matrizfisica.push_back(ratio_aspecto);
+	matrizfisica.push_back(punto_prin.x);
+	matrizfisica.push_back(punto_prin.y);
+	matrizfisica.push_back(fov_x);
+	matrizfisica.push_back(fov_y);
+	matrizfisica.push_back(error_repro);
+
+	
+	string nombre_salida = banda_extension;
+	for (int i = 0; i <= 3; i++) // quitarle el .TIF a las bandas
+	{
+		nombre_salida.pop_back();
+	}
+	nombre_salida.append("_k");
+	nombre_salida.append(to_string(num_k));
+	nombre_salida.append(".yml");
+	
+	string salida = "Matriz_Fisica_";
+	salida.append(nombre_salida);
+	GuardarMatFisica(matrizfisica, salida);
+
+	salida = "Matriz_Camara_";
+	salida.append(nombre_salida);
+	GuardarMatCamara(matrizcam, salida);
+
+	salida = "Matriz_Distorsion_";
+	salida.append(nombre_salida);
+	GuardarMatDistorsion(distcoef, salida);
+
+	/*
+	// Corrección de la distorsión en imágenes de prueba
+	cv::Mat prueba = cv::imread("pruebaV.TIF", CV_LOAD_IMAGE_ANYDEPTH); // Para abrir imágenes de 16 bits por píxel
+	cv::Mat pruebabien;
+	cv::undistort(prueba, pruebabien, matrizcam, distcoef);
+	cv::imwrite("pruebaVbien.TIF", pruebabien);
+	*/
+
+	/*
+	// Corrección de la distorsión en imágenes del set de calibrado
+	num_img = 0;
+	for (directory_entry p : recursive_directory_iterator(ruta))  // iteración en la carpeta
+	{
+		path ruta_archivo = p; // Cada archivo o subcarpeta localizado se utiliza como clase path
+		string direc = ruta_archivo.string(); // convertir la ruta de clase path a clase string
+		string nombre = ruta_archivo.filename().string(); // convertir el nombre del archivo de clase path a string
+
+		if (nombre.size() > 8) // Si el nombre es grande de 8 caracteres significa que es una foto (evita carpetas).
+		{
+			if (nombre.compare(nombre.size() - 7, 7, banda) == 0)
+			{
+				num_img += 1;
+				cv::Mat corregir = cv::imread(direc, CV_LOAD_IMAGE_ANYDEPTH);
+				corregir /= 255;
+				corregir.convertTo(corregir, CV_8UC1);
+				cv::Mat corregida;
+				cv::undistort(corregir, corregida, matrizcam, distcoef);
+				std::string nombre2 = "set_calibrado_corregido/";
+				nombre2.append(to_string(num_img));
+				nombre2.append(banda);
+				cv::imwrite(nombre2, corregida);
+			}
+		}
+	}
+	*/
+
+	/// **********************************************************************************************************************************************************************
+	/// **********************************************************************************************************************************************************************
+}
+
+void CorrigeImagenes(Mat& mat_cam, Mat& dist_coef, string& banda, string ruta_img_entrada, string ruta_img_salida)
+{
+	path ruta(ruta_img_entrada); // "D:/calibracion/"
+	int num_img = 0;
+
+	for (directory_entry p : recursive_directory_iterator(ruta))  // iteración en la carpeta
+	{
+		path ruta_archivo = p; // Cada archivo o subcarpeta localizado se utiliza como clase path
+		string direc = ruta_archivo.string(); // convertir la ruta de clase path a clase string
+		string nombre = ruta_archivo.filename().string(); // convertir el nombre del archivo de clase path a string
+
+		if (nombre.size() > 8) // Si el nombre es grande de 8 caracteres significa que es una foto (evita carpetas).
+		{
+			if (nombre.compare(nombre.size() - 7, 7, banda) == 0)
+			{
+				num_img += 1;
+				cv::Mat corregir = cv::imread(direc, CV_LOAD_IMAGE_ANYDEPTH); // En el caso de TIF con 10 bits de profundidad
+				corregir /= 255;
+				corregir.convertTo(corregir, CV_8UC1);
+				cv::Mat corregida;
+				cv::undistort(corregir, corregida, mat_cam, dist_coef);
+				std::string nombre2 = ruta_img_salida;
+				string nombre = banda;
+				for (int i = 0; i <= 3; i++)
+				{
+					nombre.pop_back();
+				}
+				int num_k = dist_coef.size().width-2;
+				nombre2.append(to_string(num_img) + nombre + "_k" + to_string(num_k) + ".TIF");
+
+				cv::imwrite(nombre2, corregida);
+			}
+		}
+	}
+}
+
+void CorrigeImagenesRGB(Mat& mat_cam, Mat& dist_coef, string& banda, string ruta_img_entrada, string ruta_img_salida)
+{
+	path ruta(ruta_img_entrada); // "D:/calibracion/"
+	int num_img = 0;
+
+	for (directory_entry p : recursive_directory_iterator(ruta))  // iteración en la carpeta
+	{
+		path ruta_archivo = p; // Cada archivo o subcarpeta localizado se utiliza como clase path
+		string direc = ruta_archivo.string(); // convertir la ruta de clase path a clase string
+		string nombre = ruta_archivo.filename().string(); // convertir el nombre del archivo de clase path a string
+
+		if (nombre.size() > 8) // Si el nombre es grande de 8 caracteres significa que es una foto (evita carpetas).
+		{
+			if (nombre.compare(nombre.size() - 7, 7, banda) == 0)
+			{
+				num_img += 1;
+				cv::Mat corregir = cv::imread(direc, CV_LOAD_IMAGE_COLOR); // En el caso de JPG son 8 bits de profundidad en RGB.
+				cv::Mat corregida;
+				cv::undistort(corregir, corregida, mat_cam, dist_coef);
+				std::string nombre2 = ruta_img_salida;
+				string nombre = banda;
+				for (int i = 0; i <= 3; i++)
+				{
+					nombre.pop_back();
+				}
+				int num_k = dist_coef.size().width - 2;
+				nombre2.append(to_string(num_img) + nombre + "_k" + to_string(num_k) + ".JPG");
+
+				cv::imwrite(nombre2, corregida);
+			}
+		}
+	}
 }
