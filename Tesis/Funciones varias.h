@@ -37,10 +37,11 @@ vector<vector<Point2f>> LeerPuntosDetectados(string ruta, int num_img);
 void CalibraRGB(string ruta_carpeta_entrada, string& banda_extension, int& num_k, string ruta_salida_deteccionesquina);
 void CalibraMono(string ruta_carpeta, string& banda_extension, int& num_k, string ruta_salida_deteccionesquina);
 
-void CalibraMonoOjoPez(string ruta_carpeta_entrada, string& banda_extension, int& num_k, string ruta_salida_deteccionesquina);
 
 
 
 /// CORRECCIÓN DE SET DE IMÁGENES A PARTIR DE LAS MATRICES INTRÍNSECAS DE LA CÁMARA
 void CorrigeImagenes(Mat& mat_cam, Mat& dist_coef, string& banda, string ruta_img_entrada, string ruta_img_salida);
 void CorrigeImagenesRGB(Mat& mat_cam, Mat& dist_coef, string& banda, string ruta_img_entrada, string ruta_img_salida);
+
+void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, string ruta_salida_imagen_corregida);

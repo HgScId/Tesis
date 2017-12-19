@@ -1,8 +1,10 @@
 #include <cstdio> // Para utilizar archivos: fopen, fread, fwrite, gets...
+#include <stdio.h>
 #include <iostream> // Funciones cout y cin
 #include <filesystem>
 #include <experimental\filesystem>
 #include <string>
+
 
 #include <opencv2/core.hpp>
 #include <opencv2/opencv.hpp>
@@ -13,9 +15,10 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 
+#include <Windows.h>
+
+
 #include "Funciones varias.h"
-
-
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 using namespace std;
@@ -24,31 +27,35 @@ using namespace experimental::filesystem::v1;
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
-int main() {
-
+int main()
+{
 
 	vector<string> bandas = { "GRE.TIF","RED.TIF","REG.TIF","NIR.TIF","RGB.JPG" };
+			
+			/*
+			vector<vector<Point2f>> PuntosRojo = LeerPuntosDetectados("Listado_Puntos_RED.yml", 42);
+			vector<vector<Point2f>> PuntosVerde = LeerPuntosDetectados("Listado_Puntos_GRE.yml", 42);
+
+			Mat homografia = findHomography(PuntosVerde[0], PuntosRojo[0]); // Puntos a alinear, Puntos de referencia
+			GuardarMat(homografia, "cosa.yml", "Homografia");
+			Mat imagen1 = imread("set_calibrado_corregido/1GRE_k3.TIF", CV_LOAD_IMAGE_ANYDEPTH);
+			Mat imagenfin;
+			warpPerspective(imagen1, imagenfin, homografia, imagen1.size());
+			imwrite("cosaGUAY.TIF", imagenfin);
+			*/
+			
+	for (int i = 0; i <= 3; i++)
+	{
+		CorrigePezParrot("D:/calibracionParrot/", bandas[i], "correccion_Parrot/");
+	}
 	
-	/*
-	vector<vector<Point2f>> PuntosRojo = LeerPuntosDetectados("Listado_Puntos_RED.yml", 42);
-	vector<vector<Point2f>> PuntosVerde = LeerPuntosDetectados("Listado_Puntos_GRE.yml", 42);
-
-	Mat homografia = findHomography(PuntosVerde[0], PuntosRojo[0]); // Puntos a alinear, Puntos de referencia
-	GuardarMat(homografia, "cosa.yml", "Homografia");
-	Mat imagen1 = imread("set_calibrado_corregido/1GRE_k3.TIF", CV_LOAD_IMAGE_ANYDEPTH);
-	Mat imagenfin;
-	warpPerspective(imagen1, imagenfin, homografia, imagen1.size());
-	imwrite("cosaGUAY.TIF", imagenfin);
-	*/
-
-
+	
+	
 	int num_k = 3;
-
-	CalibraMonoOjoPez("D:/calibracion/", bandas[0], num_k, "deteccionesquina/");
 
 	for (int i = 0; i <= 4; i++)
 	{
-
+	
 		if (i < 4)
 		{
 			CalibraMono("D:/calibracion/", bandas[i], num_k, "deteccionesquina/");
@@ -56,7 +63,7 @@ int main() {
 			Mat distcoef = LeerMatDistorsion("Matriz_Distorsion_" + bandas[i].substr(0, 3) + "_k" + to_string(num_k) + ".yml", num_k);
 			CorrigeImagenes(matrizcam, distcoef, bandas[i], "D:/calibracion/", "set_calibrado_corregido/");
 		}
-
+	
 		if (i == 4)
 		{
 			CalibraRGB("D:/calibracion/", bandas[i], num_k, "deteccionesquina/");
@@ -64,12 +71,13 @@ int main() {
 			Mat distcoef = LeerMatDistorsion("Matriz_Distorsion_" + bandas[i].substr(0, 3) + "_k" + to_string(num_k) + ".yml", num_k);
 			CorrigeImagenesRGB(matrizcam, distcoef, bandas[i], "D:/calibracion/", "set_calibrado_corregido/");
 		}
-
-
-
+	
+	
+	
 	}
-
+	
 	return(0);
+	
 }
 
 /*

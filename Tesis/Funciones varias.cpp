@@ -13,7 +13,10 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 
+
 #include "Funciones varias.h"
+
+#define PI 3.14159265358979323846
 
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -85,10 +88,10 @@ Mat AlineaImg(Mat& img_base, Mat& img_movida)
 		warpPerspective(img_movida, img_alineada, warp_matrix, img_base.size(), INTER_LINEAR + WARP_INVERSE_MAP);
 
 	// Mostrar el resultado final
-	imshow("Image 1", img_base);
-	imshow("Image 2", img_movida);
-	imshow("Image 2 Alineada", img_alineada);
-	waitKey(0);
+	cv::imshow("Image 1", img_base);
+	cv::imshow("Image 2", img_movida);
+	cv::imshow("Image 2 Alineada", img_alineada);
+	cv::waitKey(0);
 	
 	return img_alineada;
 }
@@ -274,7 +277,7 @@ void CalibraRGB(string ruta_carpeta_entrada, string& banda_extension, int& num_k
 					coord_obj.push_back(obj); // introduces las esquinas en coordenadas locales del tablero en el vector general
 					coord_img.push_back(esquinas); // introduces las esquinas detectadas en coordenadas de la imagen en el vector general
 
-					cvtColor(imagen, imagen, CV_BGR2GRAY);
+					cv::cvtColor(imagen, imagen, CV_BGR2GRAY);
 					
 					cv::cornerSubPix(imagen, esquinas, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 30, 0.1)); // función para la detección precisa de las esquinas
 					
@@ -640,231 +643,116 @@ void CorrigeImagenesRGB(Mat& mat_cam, Mat& dist_coef, string& banda, string ruta
 }
 
 
-void CalibraMonoOjoPez(string ruta_carpeta_entrada, string& banda_extension, int& num_k, string ruta_salida_deteccionesquina)
-{
-	/// CALIBRACIÓN DE UN SET DE IMÁGENES PARA UNA BANDA MONOCROMÁTICA
+void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, string ruta_salida_imagen_corregida)
+{	/// CORRECCIÓN DE DISTORSIONES CON FORMULACIÓN DE PARROT PARA CÁMARA MONOCROMÁTICA CON LENTE OJO DE PEZ
 	/// **********************************************************************************************************************************************************************
-	
-	Mat imagen=imread("D:/calibracion/0331/IMG_700101_000101_0000_GRE.TIF", CV_LOAD_IMAGE_UNCHANGED);
-	imagen.convertTo(imagen, CV_8UC1, 0.0038910505836576);
-	Mat map_x, map_y;
-	Mat resultado;
-	map_x.create(imagen.size(), CV_32FC1);
-	map_y.create(imagen.size(), CV_32FC1);
-
-	for (int i = 0; i < imagen.rows; i++)
-	{
-		for (int j = 0; j < imagen.cols; j++)
-		{
-			//map_x.at<float>(i, j)
-			//map_y.at<float>(i, j)
-			double cx = 1280 * 2.312299 / 4.8;
-			double cy = 960 * 1.780116 / 3.6;
-			double f = 1060.042371;
-			double C = 1665.110663867;
-			
-			float a = (j - cx) / f;
-			float b = (i - cy) / f;
-				
-			double theta = 2.0 / 3.141592 * std::atan(sqrt(a*a + b*b));
-			double ro = theta + 0.011488602 * theta*theta - 0.14704581 *theta*theta*theta;
-
-			double xh = C*(ro*a / (sqrt(a*a + b*b))) + cx;
-			double yh = C*(ro*b / (sqrt(a*a + b*b))) + cy;
-			
-			map_x.at<float>(i,j) = xh;
-			map_y.at<float>(i,j) = yh;
-		}
-	}
-	
-	
-	GuardarMat(map_x, "COSA.yml", "map_x");
-	GuardarMat(map_y, "COSA2.yml", "map_y");
-
-	remap(imagen, resultado, map_x, map_y, CV_INTER_CUBIC, BORDER_CONSTANT, Scalar(0, 0, 0));
-
-	imshow("HOLA", resultado);
-	waitKey(0);
-
-
-
-
-
-
-
-
-
-
 	path ruta(ruta_carpeta_entrada); //"D:/calibracion/"
 	int num_img = 0;
-	vector<vector<cv::Point2f>> coord_img;
-	vector<vector<cv::Point3f>> coord_obj; // Vector de vectores de puntos en coordenadas locales (se repiten siempre en cada imagen)
-	cv::Mat matrizcampez = Mat::zeros(Size(3, 3), CV_64F); // Matriz intrínseca de la cámara
-	cv::Mat distcoefpez = Mat::zeros(Size(1,4), CV_64F); // Matriz de coeficientes de distorsión de la cámara
-	
-	/*
-	matrizcampez.at<double>(0,0) = 1060.042371;
-	matrizcampez.at<double>(1, 1) = 1060.042371;
-	matrizcampez.at<double>(2, 2) = 1.0;
-	matrizcampez.at<double>(0,2) = 1280*2.312299/4.8;
-	matrizcampez.at<double>(1,2) = 1.780116*960/3.6;
+	double cx, cy, C, f, p0, p1, p2, p3;
 
-	distcoefpez.at<double>(0, 0) = 0.011488602;
-	distcoefpez.at<double>(1,0) = -0.14704581;
-	*/
-
-	vector<cv::Mat> rotmat; // Matriz extrínseca de rotaciones de la cámara
-	vector<cv::Mat> trasmat; // Matriz extrínseca de traslaciones de la cámara
+	/// VALORES DE METADATOS DE LA IMAGEN
+	if (banda_extension.compare("RED.TIF"))
+	{
+		cx = 1280 * 2.401203 / 4.8; // Punto principal x
+		cy = 960 * 1.767197 / 3.6;  // Punto principal y
+		C = 1659.61269698;		   // Valor C de la matriz de afinidad de lente ojo de pez de Parrot
+		f = 2 * C / PI;			   // Distancia focal en píxeles. Se obtiene a partir de f= 2C/pi. Para obtener f en mm se puede dividir por un metadato de focal plane resolution = 266.6666559
+		p0 = 0.0;					// Valores del polinomio de la distorsión
+		p1 = 1.0;
+		p2 = 0.006969404;
+		p3 = -0.139085936;
+	}
+	else if (banda_extension.compare("GRE.TIF"))
+	{
+		cx = 1280 * 2.312299 / 4.8;  // Punto principal x
+		cy = 960 * 1.780116 / 3.6;   // Punto principal y
+		C = 1665.110663867;		    // Valor C de la matriz de afinidad de lente ojo de pez de Parrot
+		f = 2 * C / PI;			    // Distancia focal en píxeles. Se obtiene a partir de f= 2C/pi. Para obtener f en mm se puede dividir por un metadato de focal plane resolution = 266.6666559
+		p0 = 0.0;					// Valores del polinomio de la distorsión
+		p1 = 1.0;
+		p2 = 0.011488602;
+		p3 = -0.14704581;
+	}
+	else if (banda_extension.compare("NIR.TIF"))
+	{
+		cx = 1280 * 2.403258 / 4.8; // Punto principal x en píxeles
+		cy = 960 * 1.854823 / 3.6;  // Punto principal y en píxeles
+		C = 1667.848289742;		   // Valor C de la matriz de afinidad de lente ojo de pez de Parrot
+		f = 2 * C / PI;			   // Distancia focal en píxeles. Se obtiene a partir de f= 2C/pi. Para obtener f en mm se puede dividir por un metadato de focal plane resolution = 266.6666559
+		p0 = 0.0;					// Valores del polinomio de la distorsión
+		p1 = 1.0;
+		p2 = 0.009449609;
+		p3 = -0.142469301;
+	}
+	else if (banda_extension.compare("REG.TIF"))
+	{
+		cx = 1280 * 2.316489 / 4.8; // Punto principal x en píxeles
+		cy = 960 * 1.880751 / 3.6;  // Punto principal y en píxeles
+		C = 1655.889938404;		   // Valor C de la matriz de afinidad de lente ojo de pez de Parrot
+		f = 2 * C / PI;			   // Distancia focal en píxeles. Se obtiene a partir de f= 2C/pi. Para obtener f en mm se puede dividir por un metadato de focal plane resolution = 266.6666559
+		p0 = 0.0;					// Valores del polinomio de la distorsión
+		p1 = 1.0;
+		p2 = 0.012380697;
+		p3 = -0.148684769;
+	}
+	/// **********************************************************************************************************************************************************************
 
 	for (directory_entry p : recursive_directory_iterator(ruta)) // iteración en carpetas y subcarpetas de la ruta
 	{
 		path ruta_archivo = p; // Cada archivo o subcarpeta localizado se utiliza como clase path
 		string direc = ruta_archivo.string(); // convertir la ruta de clase path a clase string
 		string nombre = ruta_archivo.filename().string(); // convertir el nombre del archivo de clase path a string
-
-		if (nombre.size() > 8) // Si el nombre es grande de 8 caracteres significa que es una foto (evita carpetas).
+		
+		if (nombre.size() > 8 && nombre.compare(nombre.size() - 7, 7, banda_extension) == 0) // Si el nombre es grande de 8 caracteres significa que es una foto (evita carpetas) y si es la banda que quieres.
 		{
-			if (nombre.compare(nombre.size() - 7, 7, banda_extension) == 0) // Encuentra imagen banda buscada
+			num_img += 1; // cada vez que entra significa que encuentra una imagen de la banda que quiere
+
+			Mat imagen = cv::imread(direc, CV_LOAD_IMAGE_UNCHANGED); // Para abrir imágenes de 16 bits por píxel CV_LOAD_IMAGE_ANYDEPTH. Para abrir RGB -> CV_LOAD_IMAGE_COLOR
+			imagen.convertTo(imagen, CV_8UC1, 0.0038910505836576); // Divide el nivel digital del píxel entre 257 para hacer la transformación entre 10 bits y 8 bits de profundidad
+			Mat map_x, map_y;
+			Mat resultado;
+			map_x.create(imagen.size(), CV_32FC1);
+			map_y.create(imagen.size(), CV_32FC1);
+
+			// Se corrige cada píxel de la imagen
+			for (int i = 0; i < imagen.rows; i++)
 			{
-				num_img += 1; // cada vez que entra significa que encuentra una imagen de la banda que quiere
-
-				Mat imagen = cv::imread(direc, CV_LOAD_IMAGE_UNCHANGED); // Para abrir imágenes de 16 bits por píxel CV_LOAD_IMAGE_ANYDEPTH. Para abrir RGB -> CV_LOAD_IMAGE_COLOR
-				
-				imagen.convertTo(imagen, CV_8UC1, 0.0038910505836576); // Le pongo un canal para el gris. El factor de escala (1/257) reduce el 65535 máximo valor en profundidad de 16 bits a un ND de 255.
-				
-				
-				cv::Size tamano(12, 8); // número de esquinas a localizar
-				vector<cv::Point2f> esquinas; // coordenadas de las esquinas detectadas en la imagen
-
-				bool loc = findChessboardCorners(imagen, tamano, esquinas, CV_CALIB_CB_ADAPTIVE_THRESH);
-				if (loc == true) // si se localizan bien todas las esquinas es cuando se introduce dentro del set de calibración
+				for (int j = 0; j < imagen.cols; j++)
 				{
-					vector<cv::Point3f> obj; // vector de esquinas para la imagen de estudio en coordenadas locales
-					for (int j = 1; j <= 8; j++)
-					{
-						for (int i = 1; i <= 12; i++)
-						{
-							obj.push_back({ (float(i) - 1.0f) * 30.0f,(float(j) - 1.0f) * 30.0f,0.0f }); // Tablero 30 x 30
-						}
-					}
-					coord_obj.push_back(obj); // introduces las esquinas en coordenadas locales del tablero en el vector general
-					coord_img.push_back(esquinas); // introduces las esquinas detectadas en coordenadas de la imagen en el vector general
+					float a = (j - (float)cx) / (float)f; // a y b serán valores que almacenarán la tranformación
+					float b = (i - (float)cy) / (float)f;
 
+					double theta = 2.0 / PI * std::atan(sqrt(a*a + b * b));
+					double ro = p0 + p1 * theta + p2 * theta*theta + p3 * theta*theta*theta;
 
-					cv::cornerSubPix(imagen, esquinas, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 30, 0.1)); // función para la detección precisa de las esquinas
-					cv::cvtColor(imagen, imagen, CV_GRAY2RGB); // Se transforma la imagen a 3 canales de color para ponerle la detección de esquinas en color.
+					double xh = C * (ro*a / (sqrt(a*a + b * b))) + cx;
+					double yh = C * (ro*b / (sqrt(a*a + b * b))) + cy;
 
-					cv::drawChessboardCorners(imagen, tamano, esquinas, loc); // Dibujo de las esquinas detectadas en colores
-
-					cv::imwrite(ruta_salida_deteccionesquina + std::to_string(num_img) + banda_extension, imagen);
+					map_x.at<float>(i, j) = (float)xh;
+					map_y.at<float>(i, j) = (float)yh;
 				}
-
 			}
+
+			cv::remap(imagen, resultado, map_x, map_y, CV_INTER_CUBIC, BORDER_CONSTANT, Scalar(0, 0, 0));
+			
+			
+			string salida = ruta_salida_imagen_corregida;
+			salida.append(to_string(num_img) + banda_extension);
+			imwrite(salida, resultado);
 		}
-
 	}
 	
-	vector<vector<cv::Point2f>> coord_img_trans;
-	for (int i = 0; i < coord_img.size(); i++)
-	{
-		vector<Point2f> lista_temp;
-		for (int j = 0; j < coord_img[i].size(); j++)
-		{
-			Point2f temp;
-			temp.x=(coord_img[i][j].x - (1280 * 2.312299 / 4.8)) / 1060.042371;
-			temp.y= (coord_img[i][j].y - (1.780116 * 960 / 3.6)) / 1060.042371;
-			double theta = 2.0 / 3.141592 * std::atan(sqrt(temp.x*temp.x + temp.y*temp.y));
-			double ro = theta + 0.011488602 * theta*theta - 0.14704581 *theta*theta*theta;
-			Point2f Sin_dist;
-			Sin_dist.x = 1665.110663867*(ro*temp.x / (sqrt(temp.x*temp.x + temp.y*temp.y))) + (1280 * 2.312299 / 4.8);
-			Sin_dist.y= 1665.110663867*(ro*temp.y / (sqrt(temp.x*temp.x + temp.y*temp.y))) + (1.780116 * 960 / 3.6);
-			lista_temp.push_back(Sin_dist);
-		}
-		coord_img_trans.push_back(lista_temp);
-	}
-
-	
-	/// POSBILES CALIBRACIONES SEGÚN EL NÚMERO DE PARÁMETROS DE DISTORSIÓN RADIAL QUE SE QUIERAN UTILIZAR
-	double error_repro;
-	if (num_k == 3)
-	{
-		error_repro = fisheye::calibrate(coord_obj, coord_img, Size(1280, 960), matrizcampez, distcoefpez, rotmat, trasmat, 
-			fisheye::CALIB_RECOMPUTE_EXTRINSIC + /*fisheye::CALIB_CHECK_COND*/ + fisheye::CALIB_FIX_SKEW + fisheye::CALIB_USE_INTRINSIC_GUESS, cv::TermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 30, 0.000001)); // Calibración de la cámara
-	}
-	//+ fisheye::CALIB_USE_INTRINSIC_GUESS+fisheye::CALIB_FIX_K3 + fisheye::CALIB_FIX_K4
-	
-
-
-
-	double a = distcoefpez.at<double>(0, 0);
-	double b = distcoefpez.at<double>(1,0);
-	double c = distcoefpez.at<double>(2,0);
-	double d = distcoefpez.at<double>(3,0);
-
-	a=matrizcampez.at<double>(0, 0);
-	b=matrizcampez.at<double>(1, 1);
-	c=matrizcampez.at<double>(0, 2);
-	d=matrizcampez.at<double>(1, 2);
-	a=matrizcampez.at<double>(2, 2);
-
-
-	Mat imagenmala = imread("D:/calibracion/0331/IMG_700101_000101_0000_GRE.TIF", CV_LOAD_IMAGE_UNCHANGED);
-	imagenmala.convertTo(imagenmala, CV_8UC1, 0.0038910505836576); // Le pongo un canal para el gris. El factor de escala (1/257) reduce el 65535 máximo valor en profundidad de 16 bits a un ND de 255.
-	Mat imagenbuena;
-	
-	fisheye::undistortImage(imagenmala, imagenbuena, matrizcampez, distcoefpez);
-
-	imshow("COSA", imagenbuena);
-	waitKey(0);
 	
 	
-	
-	
-	
-	double ancho = 4.8; // parámetros obtenidos mediante la multiplicación del tamaño del píxel (3.75 micras para monocromáticas) y de la resolución de la imagen 
-	double alto = 3.6; // especifican el ancho y el alto del tamaño del sensor. Probablemente por el tipo de obturador CCD mono y CMOS RGB.
-	double fov_x;
-	double fov_y;
-	double dist_focal;
-	cv::Point2d punto_prin;
-	double ratio_aspecto;
-
-	//cv::calibrationMatrixValues(matrizcampez, Size(1280, 960), ancho, alto, fov_x, fov_y, dist_focal, punto_prin, ratio_aspecto); // Parámetros físicos de la cámara
-
-	/// OBTENCIÓN DE LAS MATRICES DE CALIBRACIÓN
-	/*
-	vector<double>matrizfisicapez; // Vector para obtener la salida de parámetros
-	matrizfisicapez.push_back(dist_focal);
-	matrizfisicapez.push_back(ratio_aspecto);
-	matrizfisicapez.push_back(punto_prin.x);
-	matrizfisicapez.push_back(punto_prin.y);
-	matrizfisicapez.push_back(fov_x);
-	matrizfisicapez.push_back(fov_y);
-	matrizfisicapez.push_back(error_repro);
-	*/
-
-	string nombre_salida = banda_extension;
-	for (int i = 0; i <= 3; i++) // quitarle el .TIF a las bandas
-	{
-		nombre_salida.pop_back();
-	}
-
-	/*
-	string nombre_sal_puntos = nombre_salida;
-	nombre_sal_puntos.append(".yml");
-	string salida = "Listado_Puntos_";
-	salida.append(nombre_sal_puntos);
-	GuardarPuntosDetectados(coord_img, salida); // salida = Listado_Puntos_GRE.yml
-	*/
-
+/*
 	nombre_salida.append("_k");
 	nombre_salida.append(to_string(num_k));
 	nombre_salida.append(".yml");
-
+	*/
 	//salida = "Matriz_Fisica_";
 	//salida.append(nombre_salida);
 	//GuardarMatFisica(matrizfisicapez, salida); // salida = Matriz_Fisica_GRE_k3.yml
-
+	/*
 	string salida = "Matriz_Camara_PEZ_";
 	salida.append(nombre_salida);
 	GuardarMatCamara(matrizcampez, salida);
@@ -872,7 +760,7 @@ void CalibraMonoOjoPez(string ruta_carpeta_entrada, string& banda_extension, int
 	salida = "Matriz_Distorsion_PEZ_";
 	salida.append(nombre_salida);
 	GuardarMatDistorsion(distcoefpez, salida);
-
+	*/
 	/*
 	// Corrección de la distorsión en imágenes de prueba
 	cv::Mat prueba = cv::imread("pruebaV.TIF", CV_LOAD_IMAGE_ANYDEPTH); // Para abrir imágenes de 16 bits por píxel
