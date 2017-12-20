@@ -15,8 +15,7 @@
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
 
-#include <Windows.h>
-
+#include "exiv2\exiv2.hpp"
 
 #include "Funciones varias.h"
 ///////////////////////////////////////////////////////////////////////////////////////////////////
@@ -29,6 +28,7 @@ using namespace experimental::filesystem::v1;
 
 int main()
 {
+	
 
 	vector<string> bandas = { "GRE.TIF","RED.TIF","REG.TIF","NIR.TIF","RGB.JPG" };
 			

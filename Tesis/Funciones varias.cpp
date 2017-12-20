@@ -4,6 +4,7 @@
 #include <experimental\filesystem>
 #include <string>
 
+
 #include <opencv2/core.hpp>
 #include <opencv2/opencv.hpp>
 
@@ -12,6 +13,9 @@
 #include "opencv2\reg\mappergradshift.hpp"
 #include <opencv2/imgproc/imgproc.hpp>
 #include <opencv2/calib3d/calib3d.hpp>
+
+
+#include "exiv2\exiv2.hpp"
 
 
 #include "Funciones varias.h"
@@ -642,61 +646,15 @@ void CorrigeImagenesRGB(Mat& mat_cam, Mat& dist_coef, string& banda, string ruta
 	}
 }
 
-
 void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, string ruta_salida_imagen_corregida)
 {	/// CORRECCIÓN DE DISTORSIONES CON FORMULACIÓN DE PARROT PARA CÁMARA MONOCROMÁTICA CON LENTE OJO DE PEZ
 	/// **********************************************************************************************************************************************************************
 	path ruta(ruta_carpeta_entrada); //"D:/calibracion/"
 	int num_img = 0;
 	double cx, cy, C, f, p0, p1, p2, p3;
+	bool ojopez;
 
-	/// VALORES DE METADATOS DE LA IMAGEN
-	if (banda_extension.compare("RED.TIF"))
-	{
-		cx = 1280 * 2.401203 / 4.8; // Punto principal x
-		cy = 960 * 1.767197 / 3.6;  // Punto principal y
-		C = 1659.61269698;		   // Valor C de la matriz de afinidad de lente ojo de pez de Parrot
-		f = 2 * C / PI;			   // Distancia focal en píxeles. Se obtiene a partir de f= 2C/pi. Para obtener f en mm se puede dividir por un metadato de focal plane resolution = 266.6666559
-		p0 = 0.0;					// Valores del polinomio de la distorsión
-		p1 = 1.0;
-		p2 = 0.006969404;
-		p3 = -0.139085936;
-	}
-	else if (banda_extension.compare("GRE.TIF"))
-	{
-		cx = 1280 * 2.312299 / 4.8;  // Punto principal x
-		cy = 960 * 1.780116 / 3.6;   // Punto principal y
-		C = 1665.110663867;		    // Valor C de la matriz de afinidad de lente ojo de pez de Parrot
-		f = 2 * C / PI;			    // Distancia focal en píxeles. Se obtiene a partir de f= 2C/pi. Para obtener f en mm se puede dividir por un metadato de focal plane resolution = 266.6666559
-		p0 = 0.0;					// Valores del polinomio de la distorsión
-		p1 = 1.0;
-		p2 = 0.011488602;
-		p3 = -0.14704581;
-	}
-	else if (banda_extension.compare("NIR.TIF"))
-	{
-		cx = 1280 * 2.403258 / 4.8; // Punto principal x en píxeles
-		cy = 960 * 1.854823 / 3.6;  // Punto principal y en píxeles
-		C = 1667.848289742;		   // Valor C de la matriz de afinidad de lente ojo de pez de Parrot
-		f = 2 * C / PI;			   // Distancia focal en píxeles. Se obtiene a partir de f= 2C/pi. Para obtener f en mm se puede dividir por un metadato de focal plane resolution = 266.6666559
-		p0 = 0.0;					// Valores del polinomio de la distorsión
-		p1 = 1.0;
-		p2 = 0.009449609;
-		p3 = -0.142469301;
-	}
-	else if (banda_extension.compare("REG.TIF"))
-	{
-		cx = 1280 * 2.316489 / 4.8; // Punto principal x en píxeles
-		cy = 960 * 1.880751 / 3.6;  // Punto principal y en píxeles
-		C = 1655.889938404;		   // Valor C de la matriz de afinidad de lente ojo de pez de Parrot
-		f = 2 * C / PI;			   // Distancia focal en píxeles. Se obtiene a partir de f= 2C/pi. Para obtener f en mm se puede dividir por un metadato de focal plane resolution = 266.6666559
-		p0 = 0.0;					// Valores del polinomio de la distorsión
-		p1 = 1.0;
-		p2 = 0.012380697;
-		p3 = -0.148684769;
-	}
-	/// **********************************************************************************************************************************************************************
-
+	
 	for (directory_entry p : recursive_directory_iterator(ruta)) // iteración en carpetas y subcarpetas de la ruta
 	{
 		path ruta_archivo = p; // Cada archivo o subcarpeta localizado se utiliza como clase path
@@ -706,6 +664,131 @@ void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, stri
 		if (nombre.size() > 8 && nombre.compare(nombre.size() - 7, 7, banda_extension) == 0) // Si el nombre es grande de 8 caracteres significa que es una foto (evita carpetas) y si es la banda que quieres.
 		{
 			num_img += 1; // cada vez que entra significa que encuentra una imagen de la banda que quiere
+			
+			/// LECTURA DE LOS METADATOS DE INTERÉS DE LA IMAGEN ************************************************************************************************************************
+			{
+				// Abrir la imagen y leer metadatos
+				Exiv2::Image::AutoPtr imagen = Exiv2::ImageFactory::open(direc);
+				assert(imagen.get() != 0);
+				imagen->readMetadata(); // Leer metadatos
+
+				Exiv2::XmpData &XmpData = imagen->xmpData(); // Comprobación por si encuentra los metadatos XMP
+				if (XmpData.empty()) {
+					std::string error = "No XMP data found in the file";
+					throw Exiv2::Error(1, error);
+				}
+
+				// Recorrido por todos los campos detectados en los metadatos XMP
+				for (Exiv2::XmpData::const_iterator i = XmpData.begin(); i != XmpData.end(); ++i)
+				{
+					if (i->key() == "Xmp.Camera.PrincipalPoint")
+					{
+						string cadena = i->value().toString();
+						cx = stod(cadena.substr(0, 8));
+						cy = stod(cadena.substr(9, 16));
+					}
+
+					if (i->key() == "Xmp.Camera.FisheyeAffineMatrix")
+					{
+						string cadena = i->value().toString();
+						C = stod(cadena.substr(0, 14));
+						f = 2 * C / PI;
+					}
+
+					if (i->key() == "Xmp.Camera.FisheyePolynomial")
+					{
+						string cadena = i->value().toString();
+						p0 = stod(cadena.substr(0, 1));
+						p1 = stod(cadena.substr(2, 3));
+						p2 = stod(cadena.substr(4, 15));
+						p3 = stod(cadena.substr(16, 27));
+					}
+
+					if (i->key() == "Xmp.Camera.ModelType")
+					{
+						string cadena = i->value().toString();
+						if (cadena.compare("fisheye")==0)
+						{
+							ojopez = true;
+						}
+						else
+						{
+							ojopez = false;
+						}
+					}
+					
+					/// MOSTRAR METADATOS XMP EN PANTALLA DE FORMA COOL
+					/*
+					const char* tn = i->typeName();									// typeName() hace referencia al tipo de dato: XmpText
+					std::cout << std::setw(44) << std::setfill(' ') << std::left
+						<< i->key() << " "											// key() hace referencia al campo que se obtiene
+						<< "0x" << std::setw(4) << std::setfill('0') << std::right
+						<< std::hex << i->tag() << " "
+						<< std::setw(9) << std::setfill(' ') << std::left
+						<< (tn ? tn : "Unknown") << " "
+						<< std::dec << std::setw(3)
+						<< std::setfill(' ') << std::right
+						<< i->count() << "  "										// count() hace referencia a la camtidad de datos que se obtiene en el campo. P.E.: Un XmpText con un value()= Sequoia tendrá count()=7.
+						<< std::dec << i->value()									// value() hace referencia al valor del metadato para el campo
+						<< "\n";
+					*/
+				}
+
+				Exiv2::ExifData &exifData = imagen->exifData(); // Comprobación por si encuentra los metadatos Exif
+				if (exifData.empty()) {
+					std::string error = "No Exif data found in the file";
+					throw Exiv2::Error(1, error);
+				}
+
+				// Recorrido por todos los campos detectados en los metadatos Exif
+				for (Exiv2::ExifData::const_iterator i = exifData.begin(); i != exifData.end(); ++i)
+				{
+					if (i->key() == "Exif.Image.ImageWidth")
+					{
+						if (ojopez)
+						{
+							long numero = i->value().toLong();
+							cx = cx * double(numero) / 4.8; // 4.8 mm es el valor del ancho total del sensor monocromático
+						}
+						else
+						{
+							long numero = i->value().toLong();
+							cx = cx * double(numero) / 6.17472; // 6.17472 mm es el valor del ancho total del sensor RGB
+						}
+					}
+
+					if (i->key() == "Exif.Image.ImageLength")
+					{
+						if (ojopez)
+						{
+							long numero = i->value().toLong();
+							cy = cy * double(numero) / 3.6; // 3.6 mm es el valor del alto total del sensor monocromático
+						}
+						else
+						{
+							long numero = i->value().toLong();
+							cy = cy * double(numero) / 4.63104; // 4.63104 mm es el valor del alto total del sensor RGB
+						}
+					}
+
+					/// MOSTRAR METADATOS EXIF EN PANTALLA DE FORMA COOL
+					/*
+					const char* tn = i->typeName();
+					std::cout << std::setw(44) << std::setfill(' ') << std::left
+						<< i->key() << " "
+						<< "0x" << std::setw(4) << std::setfill('0') << std::right
+						<< std::hex << i->tag() << " "
+						<< std::setw(9) << std::setfill(' ') << std::left
+						<< (tn ? tn : "Unknown") << " "
+						<< std::dec << std::setw(3)
+						<< std::setfill(' ') << std::right
+						<< i->count() << "  "
+						<< std::dec << i->value()
+						<< "\n";
+					*/
+				}
+			}
+			/// **************************************************************************************************************************************************************
 
 			Mat imagen = cv::imread(direc, CV_LOAD_IMAGE_UNCHANGED); // Para abrir imágenes de 16 bits por píxel CV_LOAD_IMAGE_ANYDEPTH. Para abrir RGB -> CV_LOAD_IMAGE_COLOR
 			imagen.convertTo(imagen, CV_8UC1, 0.0038910505836576); // Divide el nivel digital del píxel entre 257 para hacer la transformación entre 10 bits y 8 bits de profundidad
@@ -733,70 +816,14 @@ void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, stri
 				}
 			}
 
-			cv::remap(imagen, resultado, map_x, map_y, CV_INTER_CUBIC, BORDER_CONSTANT, Scalar(0, 0, 0));
-			
+			cv::remap(imagen, resultado, map_x, map_y, CV_INTER_CUBIC, BORDER_CONSTANT, Scalar(0, 0, 0)); // Mirar parámetros en profundidad. Conveniencia.
 			
 			string salida = ruta_salida_imagen_corregida;
 			salida.append(to_string(num_img) + banda_extension);
-			imwrite(salida, resultado);
+			cv::imwrite(salida, resultado);
 		}
 	}
 	
-	
-	
-/*
-	nombre_salida.append("_k");
-	nombre_salida.append(to_string(num_k));
-	nombre_salida.append(".yml");
-	*/
-	//salida = "Matriz_Fisica_";
-	//salida.append(nombre_salida);
-	//GuardarMatFisica(matrizfisicapez, salida); // salida = Matriz_Fisica_GRE_k3.yml
-	/*
-	string salida = "Matriz_Camara_PEZ_";
-	salida.append(nombre_salida);
-	GuardarMatCamara(matrizcampez, salida);
-
-	salida = "Matriz_Distorsion_PEZ_";
-	salida.append(nombre_salida);
-	GuardarMatDistorsion(distcoefpez, salida);
-	*/
-	/*
-	// Corrección de la distorsión en imágenes de prueba
-	cv::Mat prueba = cv::imread("pruebaV.TIF", CV_LOAD_IMAGE_ANYDEPTH); // Para abrir imágenes de 16 bits por píxel
-	cv::Mat pruebabien;
-	cv::undistort(prueba, pruebabien, matrizcam, distcoef);
-	cv::imwrite("pruebaVbien.TIF", pruebabien);
-	*/
-
-	/*
-	// Corrección de la distorsión en imágenes del set de calibrado
-	num_img = 0;
-	for (directory_entry p : recursive_directory_iterator(ruta))  // iteración en la carpeta
-	{
-	path ruta_archivo = p; // Cada archivo o subcarpeta localizado se utiliza como clase path
-	string direc = ruta_archivo.string(); // convertir la ruta de clase path a clase string
-	string nombre = ruta_archivo.filename().string(); // convertir el nombre del archivo de clase path a string
-
-	if (nombre.size() > 8) // Si el nombre es grande de 8 caracteres significa que es una foto (evita carpetas).
-	{
-	if (nombre.compare(nombre.size() - 7, 7, banda) == 0)
-	{
-	num_img += 1;
-	cv::Mat corregir = cv::imread(direc, CV_LOAD_IMAGE_ANYDEPTH);
-	corregir /= 255;
-	corregir.convertTo(corregir, CV_8UC1);
-	cv::Mat corregida;
-	cv::undistort(corregir, corregida, matrizcam, distcoef);
-	std::string nombre2 = "set_calibrado_corregido/";
-	nombre2.append(to_string(num_img));
-	nombre2.append(banda);
-	cv::imwrite(nombre2, corregida);
-	}
-	}
-	}
-	*/
-
 	/// **********************************************************************************************************************************************************************
 	/// **********************************************************************************************************************************************************************
 }
