@@ -652,7 +652,8 @@ void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, stri
 	path ruta(ruta_carpeta_entrada); //"D:/calibracion/"
 	int num_img = 0;
 	double cx, cy, C, f, p0, p1, p2, p3;
-	bool ojopez;
+	double Rad1, Rad2, Rad3, Tan1, Tan2;
+	bool ojopez = false; // Inicio la variable suponiendo que se corrige la lente RGB
 
 	
 	for (directory_entry p : recursive_directory_iterator(ruta)) // iteración en carpetas y subcarpetas de la ruta
@@ -660,11 +661,13 @@ void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, stri
 		path ruta_archivo = p; // Cada archivo o subcarpeta localizado se utiliza como clase path
 		string direc = ruta_archivo.string(); // convertir la ruta de clase path a clase string
 		string nombre = ruta_archivo.filename().string(); // convertir el nombre del archivo de clase path a string
-		
+
 		if (nombre.size() > 8 && nombre.compare(nombre.size() - 7, 7, banda_extension) == 0) // Si el nombre es grande de 8 caracteres significa que es una foto (evita carpetas) y si es la banda que quieres.
 		{
 			num_img += 1; // cada vez que entra significa que encuentra una imagen de la banda que quiere
 			
+			if (ruta_archivo.extension() == ".TIF")	ojopez = true; // Si la extensión es .TIF es de las cámaras monocromáticas y utiliza una corrección para lente ojo de pez.
+
 			/// LECTURA DE LOS METADATOS DE INTERÉS DE LA IMAGEN ************************************************************************************************************************
 			{
 				// Abrir la imagen y leer metadatos
@@ -680,7 +683,7 @@ void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, stri
 
 				// Recorrido por todos los campos detectados en los metadatos XMP
 				for (Exiv2::XmpData::const_iterator i = XmpData.begin(); i != XmpData.end(); ++i)
-				{
+				{						
 					if (i->key() == "Xmp.Camera.PrincipalPoint")
 					{
 						string cadena = i->value().toString();
@@ -704,21 +707,24 @@ void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, stri
 						p3 = stod(cadena.substr(16, 27));
 					}
 
-					if (i->key() == "Xmp.Camera.ModelType")
+					if (i->key() == "Xmp.Camera.PerspectiveFocalLength") // Distancia focal para sensor RGB
 					{
 						string cadena = i->value().toString();
-						if (cadena.compare("fisheye")==0)
-						{
-							ojopez = true;
-						}
-						else
-						{
-							ojopez = false;
-						}
+						f = stod(cadena);
+					}
+
+					if (i->key() == "Xmp.Camera.PerspectiveDistortion") // Distancia focal para sensor RGB
+					{
+						string cadena = i->value().toString();
+						Rad1 = stod(cadena.substr(0, 11));
+						Rad2 = stod(cadena.substr(12, 24));
+						Rad3 = stod(cadena.substr(25, 36));
+						Tan1 = stod(cadena.substr(37, 49));
+						Tan2 = stod(cadena.substr(50, 60)); 
 					}
 					
 					/// MOSTRAR METADATOS XMP EN PANTALLA DE FORMA COOL
-					/*
+					
 					const char* tn = i->typeName();									// typeName() hace referencia al tipo de dato: XmpText
 					std::cout << std::setw(44) << std::setfill(' ') << std::left
 						<< i->key() << " "											// key() hace referencia al campo que se obtiene
@@ -731,7 +737,7 @@ void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, stri
 						<< i->count() << "  "										// count() hace referencia a la camtidad de datos que se obtiene en el campo. P.E.: Un XmpText con un value()= Sequoia tendrá count()=7.
 						<< std::dec << i->value()									// value() hace referencia al valor del metadato para el campo
 						<< "\n";
-					*/
+					
 				}
 
 				Exiv2::ExifData &exifData = imagen->exifData(); // Comprobación por si encuentra los metadatos Exif
@@ -743,36 +749,48 @@ void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, stri
 				// Recorrido por todos los campos detectados en los metadatos Exif
 				for (Exiv2::ExifData::const_iterator i = exifData.begin(); i != exifData.end(); ++i)
 				{
-					if (i->key() == "Exif.Image.ImageWidth")
+					/// TRANSFORMACIÓN DEL PUNTO PRINCIPAL A PÍXELES PARA LENTE OJO DE PEZ MONOCROMÁTICA
 					{
-						if (ojopez)
+						if (i->key() == "Exif.Image.ImageWidth")
 						{
 							long numero = i->value().toLong();
 							cx = cx * double(numero) / 4.8; // 4.8 mm es el valor del ancho total del sensor monocromático
+							// El valor cx se toma en mm y se pasa a píxeles			
 						}
-						else
-						{
-							long numero = i->value().toLong();
-							cx = cx * double(numero) / 6.17472; // 6.17472 mm es el valor del ancho total del sensor RGB
-						}
-					}
 
-					if (i->key() == "Exif.Image.ImageLength")
-					{
-						if (ojopez)
+						if (i->key() == "Exif.Image.ImageLength")
 						{
 							long numero = i->value().toLong();
 							cy = cy * double(numero) / 3.6; // 3.6 mm es el valor del alto total del sensor monocromático
 						}
-						else
+					}
+					/// TRANSFORMACIÓN DEL PUNTO PRINCIPAL A PÍXELES PARA LENTE RGB
+					{
+						if (i->key() == "Exif.Photo.PixelXDimension")
+						{
+							long numero = i->value().toLong();
+							cx = cx * double(numero) / 6.17472; // 6.17472 mm es el valor del ancho total del sensor RGB
+						}
+
+						if (i->key() == "Exif.Photo.PixelYDimension")
 						{
 							long numero = i->value().toLong();
 							cy = cy * double(numero) / 4.63104; // 4.63104 mm es el valor del alto total del sensor RGB
 						}
 					}
 
+					/// TRANSFORMACIÓN DE LA DISTANCIA FOCAL A PÍXELES PARA LENTE RGB
+					{
+						if (i->key() == "Exif.Photo.FocalPlaneXResolution")
+						{
+							auto numero = i->value().toRational();
+							double num = numero.first / numero.second;
+							f = f * num;
+						}
+					}
+
 					/// MOSTRAR METADATOS EXIF EN PANTALLA DE FORMA COOL
-					/*
+					
 					const char* tn = i->typeName();
 					std::cout << std::setw(44) << std::setfill(' ') << std::left
 						<< i->key() << " "
@@ -785,34 +803,70 @@ void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, stri
 						<< i->count() << "  "
 						<< std::dec << i->value()
 						<< "\n";
-					*/
+					
 				}
 			}
 			/// **************************************************************************************************************************************************************
-
-			Mat imagen = cv::imread(direc, CV_LOAD_IMAGE_UNCHANGED); // Para abrir imágenes de 16 bits por píxel CV_LOAD_IMAGE_ANYDEPTH. Para abrir RGB -> CV_LOAD_IMAGE_COLOR
-			imagen.convertTo(imagen, CV_8UC1, 0.0038910505836576); // Divide el nivel digital del píxel entre 257 para hacer la transformación entre 10 bits y 8 bits de profundidad
+			
+			Mat imagen; // imagen que se va a cargar
 			Mat map_x, map_y;
 			Mat resultado;
-			map_x.create(imagen.size(), CV_32FC1);
-			map_y.create(imagen.size(), CV_32FC1);
+			
 
-			// Se corrige cada píxel de la imagen
-			for (int i = 0; i < imagen.rows; i++)
+			if (ojopez)
 			{
-				for (int j = 0; j < imagen.cols; j++)
+				imagen = cv::imread(direc, CV_LOAD_IMAGE_UNCHANGED); // Para abrir imágenes de 16 bits por píxel CV_LOAD_IMAGE_ANYDEPTH. Para abrir RGB -> CV_LOAD_IMAGE_COLOR
+				imagen.convertTo(imagen, CV_8UC1, 0.0038910505836576); // Divide el nivel digital del píxel entre 257 para hacer la transformación entre 10 bits y 8 bits de profundidad
+				map_x.create(imagen.size(), CV_32FC1);
+				map_y.create(imagen.size(), CV_32FC1);
+
+				 // Se corrige cada píxel de la imagen
+				for (int i = 0; i < imagen.rows; i++)
 				{
-					float a = (j - (float)cx) / (float)f; // a y b serán valores que almacenarán la tranformación
-					float b = (i - (float)cy) / (float)f;
+					for (int j = 0; j < imagen.cols; j++)
+					{
+						float a = (j - (float)cx) / (float)f; // a y b serán valores que almacenarán la tranformación
+						float b = (i - (float)cy) / (float)f;
 
-					double theta = 2.0 / PI * std::atan(sqrt(a*a + b * b));
-					double ro = p0 + p1 * theta + p2 * theta*theta + p3 * theta*theta*theta;
+						double theta = 2.0 / PI * std::atan(sqrt(a*a + b * b));
+						double ro = p0 + p1 * theta + p2 * theta*theta + p3 * theta*theta*theta;
 
-					double xh = C * (ro*a / (sqrt(a*a + b * b))) + cx;
-					double yh = C * (ro*b / (sqrt(a*a + b * b))) + cy;
+						float xd = (float)(C * (ro*a / (sqrt(a*a + b * b))) + cx);
+						float yd = (float)(C * (ro*b / (sqrt(a*a + b * b))) + cy);
 
-					map_x.at<float>(i, j) = (float)xh;
-					map_y.at<float>(i, j) = (float)yh;
+						map_x.at<float>(i, j) = xd;
+						map_y.at<float>(i, j) = yd;
+					}
+				}
+			}
+			else
+			{
+				imagen = cv::imread(direc, CV_LOAD_IMAGE_COLOR);
+				map_x.create(imagen.size(), CV_32FC1);
+				map_y.create(imagen.size(), CV_32FC1);
+
+				for (int i = 0; i < imagen.rows; i++)
+				{
+					for (int j = 0; j < imagen.cols; j++)
+					{
+						float a = (j - (float)cx) / (float)f; // a y b serán valores que almacenarán la tranformación. A para x
+						float b = (i - (float)cy) / (float)f;
+
+						float rcuad = a * a + b * b;
+
+						float xd = (float)((1 + Rad1 * rcuad + Rad2 * rcuad*rcuad + Rad3 * rcuad*rcuad*rcuad)*a + 2 * Tan1*a*b + Tan2 * (rcuad + 2 * a*a));
+						float yd = (float)((1 + Rad1 * rcuad + Rad2 * rcuad*rcuad + Rad3 * rcuad*rcuad*rcuad)*b + 2 * Tan2*a*b + Tan1 * (rcuad + 2 * b*b));
+
+						xd = f * xd + cx;
+						yd = f * yd + cy;
+
+						//if (xd < 0) xd = 0.01;
+						//if (xd > 0) xd = imagen.cols-1;
+						//if (yd < 0) yd = 0.01;
+						//if (yd > 0) yd = imagen.rows-1;
+						map_x.at<float>(i, j) = xd;
+						map_y.at<float>(i, j) = yd;
+					}
 				}
 			}
 

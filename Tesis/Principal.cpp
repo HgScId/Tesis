@@ -44,7 +44,7 @@ int main()
 			imwrite("cosaGUAY.TIF", imagenfin);
 			*/
 			
-	for (int i = 0; i <= 3; i++)
+	for (int i = 4; i <= 4; i++)
 	{
 		CorrigePezParrot("D:/calibracionParrot/", bandas[i], "correccion_Parrot/");
 	}
