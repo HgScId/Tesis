@@ -18,6 +18,7 @@
 #include "exiv2\exiv2.hpp"
 
 #include "Funciones varias.h"
+
 ///////////////////////////////////////////////////////////////////////////////////////////////////
 
 using namespace std;
@@ -28,8 +29,6 @@ using namespace experimental::filesystem::v1;
 
 int main()
 {
-	
-
 	vector<string> bandas = { "GRE.TIF","RED.TIF","REG.TIF","NIR.TIF","RGB.JPG" };
 			
 			/*
@@ -44,11 +43,11 @@ int main()
 			imwrite("cosaGUAY.TIF", imagenfin);
 			*/
 			
-	for (int i = 4; i <= 4; i++)
+	/*for (int i = 4; i <= 4; i++)
 	{
-		CorrigePezParrot("D:/calibracionParrot/", bandas[i], "correccion_Parrot/");
+		CorrigeParrot("D:/calibracionParrot/", bandas[i], "correccion_Parrot/");
 	}
-	
+	*/
 	
 	
 	int num_k = 3;

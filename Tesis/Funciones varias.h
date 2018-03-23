@@ -44,4 +44,4 @@ void CalibraMono(string ruta_carpeta, string& banda_extension, int& num_k, strin
 void CorrigeImagenes(Mat& mat_cam, Mat& dist_coef, string& banda, string ruta_img_entrada, string ruta_img_salida);
 void CorrigeImagenesRGB(Mat& mat_cam, Mat& dist_coef, string& banda, string ruta_img_entrada, string ruta_img_salida);
 
-void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, string ruta_salida_imagen_corregida);
+void CorrigeParrot(string ruta_carpeta_entrada, string& banda_extension, string ruta_salida_imagen_corregida);

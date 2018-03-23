@@ -443,14 +443,14 @@ void CalibraMono(string ruta_carpeta_entrada, string& banda_extension, int& num_
 					{
 						for (int i = 1; i <= 12; i++)
 						{
-							obj.push_back({ (float(i) - 1.0f) * 30.0f,(float(j) - 1.0f) * 30.0f,0.0f }); // Tablero 30 x 30
+							obj.push_back({ (float(i) - 1.0f) * 30.0f,(float(j) - 1.0f) * 30.0f,0.0f }); // Tablero 30 x 30 cm
 						}
 					}
 					coord_obj.push_back(obj); // introduces las esquinas en coordenadas locales del tablero en el vector general
 					coord_img.push_back(esquinas); // introduces las esquinas detectadas en coordenadas de la imagen en el vector general
 
 
-					cv::cornerSubPix(imagen, esquinas, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 30, 0.1)); // función para la detección precisa de las esquinas
+					cv::cornerSubPix(imagen, esquinas, cv::Size(11, 11), cv::Size(-1, -1), cv::TermCriteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 30, 0.1)); // función para refinar la detección precisa de las esquinas
 					//cv::cvtColor(imagen, imagen, CV_GRAY2RGB); // Se transforma la imagen a 3 canales de color para ponerle la detección de esquinas en color.
 
 					//cv::drawChessboardCorners(imagen, tamano, esquinas, loc); // Dibujo de las esquinas detectadas en colores
@@ -476,7 +476,7 @@ void CalibraMono(string ruta_carpeta_entrada, string& banda_extension, int& num_
 	}
 	else if (num_k == 4)
 	{
-		error_repro = cv::calibrateCamera(coord_obj, coord_img, Size(1280, 960), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_RATIONAL_MODEL | CV_CALIB_FIX_K5 | CV_CALIB_FIX_K6); // Calibración de la cámara
+		error_repro = cv::calibrateCamera(coord_obj, coord_img, Size(1280, 960), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_RATIONAL_MODEL | CV_CALIB_FIX_K5); // Calibración de la cámara
 	}
 	else if (num_k == 5)
 	{
@@ -486,6 +486,16 @@ void CalibraMono(string ruta_carpeta_entrada, string& banda_extension, int& num_
 	{
 		error_repro = cv::calibrateCamera(coord_obj, coord_img, Size(1280, 960), matrizcam, distcoef, rotmat, trasmat, CV_CALIB_RATIONAL_MODEL); // Calibración de la cámara
 	}
+	
+	
+	for (int i = 0; i < rotmat.size(); i++)
+	{
+		cout << rotmat[i].at<double>(0, 0) << " "<< rotmat[i].at<double>(0, 1) << " " << rotmat[i].at<double>(0, 2) << endl;
+		cv::Mat prueba;
+		Rodrigues(rotmat[i], prueba);
+		cout << prueba.at<double>(0, 0) << " " << prueba.at<double>(0, 1) << " " << prueba.at<double>(0, 2) << endl << prueba.at<double>(1, 0) << " " << prueba.at<double>(1, 1) << " " <<
+			prueba.at<double>(1, 2) << endl << prueba.at<double>(2, 0) << " " << prueba.at<double>(2, 1) << " " << prueba.at<double>(2, 2) << endl;
+	}
 
 	double ancho = 4.8; // parámetros obtenidos mediante la multiplicación del tamaño del píxel (3.75 micras para monocromáticas) y de la resolución de la imagen 
 	double alto = 3.6; // especifican el ancho y el alto del tamaño del sensor. Probablemente por el tipo de obturador CCD mono y CMOS RGB.
@@ -494,7 +504,6 @@ void CalibraMono(string ruta_carpeta_entrada, string& banda_extension, int& num_
 	double dist_focal;
 	cv::Point2d punto_prin;
 	double ratio_aspecto;
-
 	cv::calibrationMatrixValues(matrizcam, Size(1280, 960), ancho, alto, fov_x, fov_y, dist_focal, punto_prin, ratio_aspecto); // Parámetros físicos de la cámara
 
 	/// OBTENCIÓN DE LAS MATRICES DE CALIBRACIÓN
@@ -646,7 +655,7 @@ void CorrigeImagenesRGB(Mat& mat_cam, Mat& dist_coef, string& banda, string ruta
 	}
 }
 
-void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, string ruta_salida_imagen_corregida)
+void CorrigeParrot(string ruta_carpeta_entrada, string& banda_extension, string ruta_salida_imagen_corregida)
 {	/// CORRECCIÓN DE DISTORSIONES CON FORMULACIÓN DE PARROT PARA CÁMARA MONOCROMÁTICA CON LENTE OJO DE PEZ
 	/// **********************************************************************************************************************************************************************
 	path ruta(ruta_carpeta_entrada); //"D:/calibracion/"
@@ -789,7 +798,7 @@ void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, stri
 						}
 					}
 
-					/// MOSTRAR METADATOS EXIF EN PANTALLA DE FORMA COOL
+					/// MOSTRAR METADATOS EXIF EN PANTALLA DE FORMA "COOL"
 					
 					const char* tn = i->typeName();
 					std::cout << std::setw(44) << std::setfill(' ') << std::left
@@ -857,8 +866,8 @@ void CorrigePezParrot(string ruta_carpeta_entrada, string& banda_extension, stri
 						float xd = (float)((1 + Rad1 * rcuad + Rad2 * rcuad*rcuad + Rad3 * rcuad*rcuad*rcuad)*a + 2 * Tan1*a*b + Tan2 * (rcuad + 2 * a*a));
 						float yd = (float)((1 + Rad1 * rcuad + Rad2 * rcuad*rcuad + Rad3 * rcuad*rcuad*rcuad)*b + 2 * Tan2*a*b + Tan1 * (rcuad + 2 * b*b));
 
-						xd = f * xd + cx;
-						yd = f * yd + cy;
+						xd = (float)f * xd + (float)cx;
+						yd = (float)f * yd + (float)cy;
 
 						//if (xd < 0) xd = 0.01;
 						//if (xd > 0) xd = imagen.cols-1;
